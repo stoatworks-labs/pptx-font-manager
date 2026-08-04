@@ -1,0 +1,28 @@
+# Cloudflare deployment for PowerPoint Font Manager.
+#
+# A static-assets-only Worker: no server code. The deck never leaves the browser
+# — parsing, font detection and bundle building all happen client-side. The only
+# outbound requests are to Google Fonts, made by the browser directly.
+#
+# The fleet does NOT use Cloudflare Pages — `pages_build_output_dir` fails here
+# with "Could not detect a directory containing static files", which reads like a
+# missing build step and is really the wrong config key. Same shape as
+# aspect-calc, blend-calc and pixel-peeker.
+#
+# Build command in the Cloudflare project:
+#
+#   npm ci && npm run build
+#
+# `public/_headers` is copied into dist/ by Vite and carries the CSP and the
+# immutable-cache rule for hashed assets; the assets runtime honours it. Note the
+# CSP here is wider than the rest of the fleet: connect-src and font-src must
+# allow fonts.googleapis.com and fonts.gstatic.com or the download step fails
+# silently at the fetch.
+#
+# `name` must match the Cloudflare project.
+
+name = "pptx-font-manager"
+compatibility_date = "2026-07-30"
+
+[assets]
+directory = "./dist"
