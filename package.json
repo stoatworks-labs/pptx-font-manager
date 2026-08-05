@@ -20,13 +20,13 @@
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
     "fflate": "^0.8.2",
-    "react": "^18.3.1",
+    "react": "^19.2.8",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^26.1.2",
-    "@types/react": "^18.3.12",
+    "@types/react": "^19.2.18",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^28.0.0",
