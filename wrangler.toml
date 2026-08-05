@@ -26,3 +26,11 @@ compatibility_date = "2026-07-30"
 
 [assets]
 directory = "./dist"
+
+# The public hostname, declared here rather than clicked into the dashboard as
+# the older tools in the fleet were. `custom_domain = true` makes wrangler
+# create the DNS record and the Worker custom domain on deploy, so the hostname
+# is reproducible from the repo and cannot drift from what is actually serving.
+[[routes]]
+pattern = "pptx-font-manager.stoatworks-labs.com"
+custom_domain = true
