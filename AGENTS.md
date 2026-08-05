@@ -89,6 +89,7 @@ src/core/         Portable, no DOM. Reusable unchanged in the desktop port.
   names.ts          Face-name -> family/weight/italic, installed matching
   eot.ts            Embedded font headers, and extraction where possible
   google.ts         Catalogue matching + downloads
+  substitutes.ts    Stand-ins for fonts that cannot be redistributed — see §9
   bundle.ts         The sidecar .zip
   installers.ts     The scripts that go inside it
   types.ts
@@ -322,3 +323,58 @@ Verified working, end to end:
   `cargo run --example install_probe` instead.
 - No code signing or notarisation yet, so a distributed build will hit
   Gatekeeper.
+
+---
+
+## 9. Substitutes: the fonts that actually go missing
+
+The fonts a deck is most likely to be missing are not exotic. They are
+**Calibri, Cambria, Arial, Times New Roman, Courier New and Georgia** — the
+system fonts a deck picks up simply by being authored on Windows or a Mac.
+
+All of them share three properties: they may not be redistributed, they are not
+on Google Fonts, and the machine the deck is going to very likely lacks them
+too. Before `src/core/substitutes.ts` the app's entire answer for `Calibri` was
+"missing, not on Google Fonts", with no suggestions — `suggestGoogleFamilies`
+ranks by shared word tokens and there is no path from "Calibri" to "Carlito".
+
+### Metric-compatible is a strictly stronger claim than "looks similar"
+
+A **metric-compatible** face has the same advance widths as its target. Text
+occupies the same horizontal space, so line breaks hold, text stays in its box,
+and a slide proofed at 1920x1080 is still proofed. These exist because Google
+and RedHat commissioned them for exactly this problem:
+
+| Deck asks for   | Stand-in | Note                         |
+| --------------- | -------- | ---------------------------- |
+| Calibri         | Carlito  | commissioned as a Calibri metric clone |
+| Cambria         | Caladea  | commissioned as a Cambria metric clone |
+| Arial/Helvetica | Arimo    | Chrome OS core font          |
+| Times New Roman | Tinos    | Chrome OS core font          |
+| Courier New     | Cousine  | Chrome OS core font          |
+| Georgia         | Gelasio  | metric-compatible with Georgia |
+
+A **similar** face (Open Sans for Segoe UI, EB Garamond for Garamond) will
+change line breaks. Presented as a fix, it is worse than saying nothing: the
+user believes the deck is safe and discovers otherwise in front of an audience.
+
+**So `metric` is a separate field, not a ranking.** It drives the colour of the
+row, the wording, and a distinct `SUBSTITUTIONS` section in the bundle
+manifest. Do not collapse the two into one sorted list.
+
+### Two things that will bite
+
+- **Substitutes are a fallback, never a first answer.** `resolve.ts` only
+  attaches them when the font is missing *and* nothing downloadable matches it
+  directly. A real copy of the font the deck asked for always wins.
+- **`parseFontName('Times New Roman')` returns the family `Times New`**, because
+  `Roman` is a weight token (as in `Times Roman`) and only `times roman` is in
+  `PROTECTED_FAMILIES`. The installed-check survives this by comparing the raw
+  name first, and `findSubstitutes` does the same — it tries `parsed.raw` before
+  `parsed.family`, and `Times New` is listed as an alias as belt-and-braces.
+  There is a test pinning this exact behaviour.
+
+Substitutes are deliberately **excluded from the bulk "install missing fonts"
+action**. A substitute is a different typeface, and swapping one in without the
+user choosing it is not a call this app gets to make silently. They get their
+own per-row button, and their own manifest section that leads the file.

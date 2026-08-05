@@ -1,11 +1,19 @@
 import { parseFontName, resolveInstalled } from '../core/names'
 import { findGoogleFamily, suggestGoogleFamilies } from '../core/google'
+import { findSubstitutes, type SubstituteMatch } from '../core/substitutes'
 import type { DeckFont, FontStatus, GoogleMatch } from '../core/types'
 import type { FontInventory } from '../platform/fontcheck'
 
 export interface ResolvedFont extends FontStatus {
   /** Alternatives when the font is missing and not on Google Fonts. */
   suggestions: GoogleMatch[]
+  /**
+   * Curated stand-ins for a font that cannot be redistributed — Carlito for
+   * Calibri, Arimo for Arial. Set only when the font is missing and nothing
+   * downloadable matches it directly, because an actual copy of the font the
+   * deck asked for always beats a substitute.
+   */
+  substitutes?: SubstituteMatch
 }
 
 /**
@@ -54,13 +62,22 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
     matchedFamily = r.matchedFamily
   }
 
+  // Substitutes are a fallback, not a first answer: if the real font can be
+  // downloaded, hand over the real font. They also cover the case where a
+  // family is in the catalogue but has no usable static files.
+  const needsFallback = state === 'missing' && !google?.downloadable
+  const substitutes = needsFallback ? findSubstitutes(parsed) : null
+
   return {
     font,
     state,
     method: inventory.method,
     matchedFamily,
     google: google ?? undefined,
-    suggestions: state === 'missing' && !google ? suggestGoogleFamilies(parsed) : [],
+    // A curated substitute is always better than token-overlap guesswork, so
+    // the fuzzy suggestions stand down when one exists.
+    suggestions: state === 'missing' && !google && !substitutes ? suggestGoogleFamilies(parsed) : [],
+    substitutes: substitutes ?? undefined,
   }
 }
 
@@ -74,8 +91,17 @@ export interface ResolveSummary {
   familyOnly: number
   missing: number
   embedded: number
-  /** Missing fonts that Google Fonts can supply. */
+  /** Missing fonts that Google Fonts can supply as the real thing. */
   fixable: number
+  /** Missing fonts with no real copy available, but a curated stand-in. */
+  substitutable: number
+  /**
+   * Of those, the ones whose stand-in preserves the deck's line breaks.
+   * Reported separately because the rest will reflow the deck, and a summary
+   * that hides that difference is telling the user the deck is safe when it
+   * is not.
+   */
+  metricSubstitutable: number
 }
 
 export function summarize(resolved: ResolvedFont[]): ResolveSummary {
@@ -86,6 +112,8 @@ export function summarize(resolved: ResolvedFont[]): ResolveSummary {
     missing: 0,
     embedded: 0,
     fixable: 0,
+    substitutable: 0,
+    metricSubstitutable: 0,
   }
   for (const r of resolved) {
     if (r.state === 'installed') s.installed++
@@ -94,6 +122,10 @@ export function summarize(resolved: ResolvedFont[]): ResolveSummary {
     else {
       s.missing++
       if (r.google?.downloadable) s.fixable++
+      else if (r.substitutes) {
+        s.substitutable++
+        if (r.substitutes.hasMetric) s.metricSubstitutable++
+      }
     }
   }
   return s

@@ -173,6 +173,36 @@ export default function App() {
     }
   }, [])
 
+  /**
+   * Fetch a curated stand-in — Carlito for Calibri, Arimo for Arial.
+   *
+   * Deliberately per-row and never part of the bulk "install missing fonts"
+   * action: a substitute is a *different typeface*, and swapping one in without
+   * the user picking it is not a decision this app gets to make silently.
+   */
+  const useSubstitute = useCallback(
+    async (r: ResolvedFont, family: string) => {
+      setError(null)
+      setReport(null)
+      setBusy(`${desktop ? 'Installing' : 'Downloading'} ${family}…`)
+      try {
+        const faces = await fetchGoogleFaces(family, [r.font.weight], { italics: r.font.italic })
+        if (desktop) {
+          const result = await installFonts(faces.map((f) => ({ filename: f.filename, data: f.data })))
+          setReport(result)
+          if (scan) await refreshInventory(scan)
+        } else {
+          for (const f of faces) download(f.data, f.filename)
+        }
+      } catch (e) {
+        setError((e as Error).message)
+      } finally {
+        setBusy(null)
+      }
+    },
+    [desktop, scan, refreshInventory],
+  )
+
   const makeBundle = useCallback(async () => {
     if (!scan) return
     setBusy('Building bundle…')
@@ -289,6 +319,35 @@ export default function App() {
               }
             }
             if (added > 0) continue
+          }
+        }
+
+        // Last resort before giving up: a redistributable stand-in. This is
+        // the only branch that can put something usable in the bundle for
+        // Calibri, Arial and the rest of the system fonts, which are exactly
+        // the fonts a venue machine is most likely to be missing too.
+        const best = r.substitutes?.substitutes[0]
+        if (best) {
+          setBusy(`Fetching ${best.family}…`)
+          try {
+            const faces = await fetchGoogleFaces(best.family, [font.weight], {
+              italics: font.italic,
+            })
+            for (const f of faces) {
+              entries.push({
+                filename: f.filename,
+                data: f.data,
+                family: f.family,
+                source: 'substitute',
+                license: f.license,
+                redistributable: true,
+                provenance: `Google Fonts (${f.license}), as a stand-in for ${r.substitutes!.target}`,
+                substituteFor: { target: r.substitutes!.target, metric: best.metric },
+              })
+            }
+            continue
+          } catch {
+            /* fall through to the unavailable list */
           }
         }
 
@@ -470,6 +529,7 @@ export default function App() {
                 busy={!!busy}
                 onGet={() => void getOne(r)}
                 onInstall={() => void install([r])}
+                onSubstitute={(family) => void useSubstitute(r, family)}
               />
             ))}
           </div>
@@ -539,12 +599,14 @@ function FontRow({
   busy,
   onGet,
   onInstall,
+  onSubstitute,
 }: {
   r: ResolvedFont
   desktop: boolean
   busy: boolean
   onGet: () => void
   onInstall: () => void
+  onSubstitute: (family: string) => void
 }) {
   const { font } = r
 
@@ -587,6 +649,11 @@ function FontRow({
   const canFetch = r.google?.downloadable
   const wants = r.state === 'missing' || r.state === 'family-installed'
 
+  // A stand-in for something that cannot legally travel in the bundle.
+  const sub = r.substitutes
+  const best = sub?.substitutes[0]
+  const alternates = sub?.substitutes.slice(1) ?? []
+
   return (
     <div className="row">
       <div>
@@ -597,12 +664,32 @@ function FontRow({
           {detail.length > 0 && ' · '}
           {detail.join(' · ')}
         </div>
+        {sub && best && (
+          <div className={`sub ${best.metric ? 'sub-metric' : 'sub-similar'}`}>
+            <strong>{best.family}</strong> can stand in for {sub.target}.{' '}
+            {best.metric
+              ? 'Same widths, so your line breaks and text boxes hold.'
+              : 'Widths differ, so line breaks will move — check the deck afterwards.'}
+            {alternates.length > 0 && (
+              <> Also: {alternates.map((a) => a.family).join(', ')}.</>
+            )}
+          </div>
+        )}
       </div>
       <div className="actions">
         {pill}
         {wants && canFetch && (
           <button onClick={desktop ? onInstall : onGet} disabled={busy}>
             {desktop ? 'Install' : 'Download'}
+          </button>
+        )}
+        {wants && !canFetch && best && (
+          <button
+            onClick={() => onSubstitute(best.family)}
+            disabled={busy}
+            title={best.note}
+          >
+            {desktop ? 'Install' : 'Download'} {best.family}
           </button>
         )}
       </div>

@@ -28,6 +28,28 @@ const restrictedEntry: BundleEntry = {
   provenance: 'copied from this machine',
 }
 
+const metricSubstitute: BundleEntry = {
+  filename: 'Carlito-Regular.ttf',
+  data: fakeTtf(72),
+  family: 'Carlito',
+  source: 'substitute',
+  license: 'OFL-1.1',
+  redistributable: true,
+  provenance: 'Google Fonts (OFL-1.1), as a stand-in for Calibri',
+  substituteFor: { target: 'Calibri', metric: true },
+}
+
+const similarSubstitute: BundleEntry = {
+  filename: 'OpenSans-Regular.ttf',
+  data: fakeTtf(72),
+  family: 'Open Sans',
+  source: 'substitute',
+  license: 'OFL-1.1',
+  redistributable: true,
+  provenance: 'Google Fonts (OFL-1.1), as a stand-in for Segoe UI',
+  substituteFor: { target: 'Segoe UI', metric: false },
+}
+
 function open(zip: Uint8Array) {
   const files = unzipSync(zip)
   return { files, text: (n: string) => strFromU8(files[n]!) }
@@ -117,6 +139,47 @@ describe('buildBundle', () => {
     // ...and LF for the unix ones, or bash chokes on the carriage returns.
     expect(text('install-fonts.command')).not.toContain('\r\n')
     expect(text('install-fonts.sh')).not.toContain('\r\n')
+  })
+})
+
+describe('substitutions in the manifest', () => {
+  const build = (entries: BundleEntry[]) =>
+    open(buildBundle({ deckName: 'D.pptx', entries, unavailable: [] })).text('MANIFEST.txt')
+
+  it('says plainly that a substitute is not the font the deck asked for', () => {
+    const m = build([metricSubstitute])
+    expect(m).toContain('SUBSTITUTIONS — these are NOT the fonts the deck asks for')
+    expect(m).toContain('stands in for: Calibri')
+  })
+
+  it('states that a metric-compatible swap preserves the layout', () => {
+    expect(build([metricSubstitute])).toContain('SAME as the original')
+  })
+
+  it('warns that a non-metric swap will reflow the deck', () => {
+    const m = build([similarSubstitute])
+    expect(m).toContain('DIFFERENT — line breaks will move')
+    // The extra paragraph only fires when something really will reflow, so a
+    // bundle of purely metric swaps does not cry wolf.
+    expect(m).toContain('check for text that has reflowed')
+    expect(build([metricSubstitute])).not.toContain('check for text that has reflowed')
+  })
+
+  it('keeps substitutes out of the plain free list, so they cannot be read as the real font', () => {
+    const m = build([freeEntry, metricSubstitute])
+    const subsAt = m.indexOf('SUBSTITUTIONS')
+    const freeAt = m.indexOf('FREE TO REDISTRIBUTE')
+    expect(subsAt).toBeGreaterThan(-1)
+    expect(freeAt).toBeGreaterThan(-1)
+    // Substitutions come first: the swap is the thing you must not miss.
+    expect(subsAt).toBeLessThan(freeAt)
+    const freeSection = m.slice(freeAt)
+    expect(freeSection).toContain('Poppins-Regular.ttf')
+    expect(freeSection).not.toContain('Carlito-Regular.ttf')
+  })
+
+  it('still counts substitutes in the file total', () => {
+    expect(build([freeEntry, metricSubstitute])).toContain('2 font file(s) included.')
   })
 })
 

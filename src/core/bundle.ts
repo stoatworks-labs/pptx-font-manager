@@ -27,7 +27,7 @@ import type { DeckFont, GoogleMatch } from './types'
  * own machines — without pretending a foundry font is free to hand around.
  */
 
-export type FontSource = 'google' | 'embedded' | 'local'
+export type FontSource = 'google' | 'embedded' | 'local' | 'substitute'
 
 export interface BundleEntry {
   /** Filename inside fonts/. */
@@ -42,6 +42,20 @@ export interface BundleEntry {
   redistributable: boolean
   /** Where it came from, for the manifest. */
   provenance: string
+  /**
+   * Set when this file is a stand-in for a font that could not be included —
+   * Carlito for Calibri, Arimo for Arial.
+   *
+   * It has to be called out separately in the manifest. Someone opening a
+   * bundle, seeing Carlito and no Calibri, would otherwise reasonably conclude
+   * the tool had simply got it wrong.
+   */
+  substituteFor?: {
+    /** The font the deck actually asked for. */
+    target: string
+    /** Same advance widths, so the deck's line breaks survive the swap. */
+    metric: boolean
+  }
 }
 
 export interface BundleReport {
@@ -64,11 +78,45 @@ function manifestText(report: BundleReport, generated: string): string {
   lines.push(`Generated ${generated} by PowerPoint Font Manager`)
   lines.push('')
 
-  const restricted = report.entries.filter((e) => !e.redistributable)
-  const free = report.entries.filter((e) => e.redistributable)
+  const substitutes = report.entries.filter((e) => e.substituteFor)
+  const restricted = report.entries.filter((e) => !e.redistributable && !e.substituteFor)
+  const free = report.entries.filter((e) => e.redistributable && !e.substituteFor)
 
   lines.push(`${report.entries.length} font file(s) included.`)
   lines.push('')
+
+  // Deliberately first. Someone opening this bundle needs to know a swap
+  // happened before they read a list of filenames that do not match the fonts
+  // their deck names.
+  if (substitutes.length > 0) {
+    lines.push('─'.repeat(72))
+    lines.push('SUBSTITUTIONS — these are NOT the fonts the deck asks for')
+    lines.push('─'.repeat(72))
+    lines.push('The deck uses fonts that cannot legally be included in a bundle —')
+    lines.push('typically Microsoft or Apple system fonts. These stand-ins are free to')
+    lines.push('redistribute and were chosen to match as closely as possible.')
+    lines.push('')
+    for (const e of substitutes) {
+      const sub = e.substituteFor!
+      lines.push(`  ${e.filename}`)
+      lines.push(`      stands in for: ${sub.target}`)
+      lines.push(`      family:        ${e.family}`)
+      lines.push(`      licence:       ${e.license}`)
+      lines.push(
+        sub.metric
+          ? '      widths:        SAME as the original — line breaks and text boxes hold.'
+          : '      widths:        DIFFERENT — line breaks will move. Check the deck.',
+      )
+      lines.push(`      source:        ${e.provenance}`)
+      lines.push('')
+    }
+    if (substitutes.some((e) => !e.substituteFor!.metric)) {
+      lines.push('At least one substitution changes text widths. Open the deck with these')
+      lines.push('fonts installed and check for text that has reflowed or overflowed its')
+      lines.push('box before you rely on it.')
+      lines.push('')
+    }
+  }
 
   if (free.length > 0) {
     lines.push('─'.repeat(72))

@@ -258,6 +258,35 @@ button:disabled {
   border-radius: 4px;
 }
 
+/*
+ * Substitute offer. The metric/similar split is carried by colour as well as
+ * wording, because "same widths, your deck holds" and "line breaks will move"
+ * are genuinely different promises and the second one is a warning.
+ */
+.row .sub {
+  font-size: 12.5px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border-left: 3px solid transparent;
+}
+
+.row .sub strong {
+  font-weight: 620;
+}
+
+.row .sub.sub-metric {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-left-color: var(--ok);
+}
+
+.row .sub.sub-similar {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-left-color: var(--warn);
+}
+
 .row .actions {
   display: flex;
   gap: 6px;

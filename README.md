@@ -58,6 +58,18 @@ against CoreText on macOS across nine fonts and agreed on all nine.
 is normalised, with near-matches offered when there is no exact one (a missing
 `Garamond` suggests EB Garamond and Cormorant Garamond).
 
+**Substitutes what cannot be shared.** The fonts most often missing are the
+ones a deck picks up just by being written on Windows or a Mac — Calibri,
+Cambria, Arial, Times New Roman, Courier New, Georgia. None may be
+redistributed and none are on Google Fonts, so the app offers *metric-compatible*
+stand-ins instead: Carlito for Calibri, Caladea for Cambria, Arimo for Arial,
+Tinos for Times New Roman. These have the **same advance widths** as the
+original, so line breaks hold and text stays inside its box.
+
+Where only a visually similar face exists (Open Sans for Segoe UI), it says so
+plainly — that swap *will* move your line breaks, and being told the deck is
+fixed when it is not is worse than being told the font is missing.
+
 **Reports embedded fonts** — fonts that travel inside the deck and need no
 installation at all. Where the format allows, it extracts them as real
 installable files (see below).
