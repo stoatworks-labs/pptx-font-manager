@@ -339,7 +339,68 @@ fn register_font(path: &Path, data: &[u8]) -> Result<(), String> {
     key.set_value(format!("{face}{suffix}"), &path.display().to_string())
         .map_err(|e| format!("Could not write the font registry value: {e}"))?;
 
+    // Writing the file and the registry value does not make the font usable in
+    // this session — the same gap as the CoreText one on macOS, with a
+    // different remedy. `AddFontResourceW` registers it now; the WM_FONTCHANGE
+    // broadcast tells every running window to rebuild its font list. Windows'
+    // own installer does both, and skipping them leaves a font that only
+    // appears after the user logs out.
+    add_font_resource_and_notify(path);
+
     Ok(())
+}
+
+/// GDI registration plus the WM_FONTCHANGE broadcast.
+///
+/// Best effort: the file and the registry value are already in place, so a
+/// failure here costs the user a logout rather than the font.
+#[cfg(target_os = "windows")]
+fn add_font_resource_and_notify(path: &Path) {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    const HWND_BROADCAST: isize = 0xffff;
+    const WM_FONTCHANGE: u32 = 0x001D;
+    const SMTO_ABORTIFHUNG: u32 = 0x0002;
+
+    #[link(name = "gdi32")]
+    extern "system" {
+        fn AddFontResourceW(lpszFilename: *const u16) -> i32;
+    }
+    #[link(name = "user32")]
+    extern "system" {
+        fn SendMessageTimeoutW(
+            hwnd: isize,
+            msg: u32,
+            wparam: usize,
+            lparam: isize,
+            flags: u32,
+            timeout: u32,
+            result: *mut usize,
+        ) -> isize;
+    }
+
+    let wide: Vec<u16> = OsStr::new(path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // SAFETY: `wide` is a NUL-terminated UTF-16 path that outlives the call,
+    // and `result` is a valid out-pointer. Both functions are documented as
+    // safe to call from any thread.
+    unsafe {
+        AddFontResourceW(wide.as_ptr());
+        let mut result: usize = 0;
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_FONTCHANGE,
+            0,
+            0,
+            SMTO_ABORTIFHUNG,
+            5_000,
+            &mut result,
+        );
+    }
 }
 
 /// Register a font with CoreText so it is usable *now*.

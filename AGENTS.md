@@ -250,6 +250,69 @@ cd src-tauri && cargo run --example probe   # then diff against src/data/google-
 At the time of writing 113 of the 1,942 catalogued families were not visible to
 CoreText; `Asimovian` is the one the install probe uses.
 
+### 8.2b Windows, measured on real Windows
+
+Tested on Windows 11 ARM64 (build 26200) in the Parallels VM, driven with
+`prlctl exec`. Two things about that harness matter before you trust a result:
+
+- **`prlctl exec` runs as SYSTEM** (`MACHINE$`), so `%LOCALAPPDATA%` is
+  `C:\Windows\system32\config\systemprofile\...`. A per-user font install
+  tested that way proves nothing about a real user. Pass `--current-user`.
+- **`Expand-Archive` strips Mark-of-the-Web.** Only the shell's own copy engine
+  propagates it, so extract through `Shell.Application`'s `CopyHere` if the
+  point of the test is MOTW. And `curl`/`Invoke-WebRequest` never set MOTW in
+  the first place — only browsers do, so write the `Zone.Identifier` stream
+  yourself.
+
+What the bundle installer got right, confirmed end to end under a genuine
+`ZoneId=3`:
+
+| Claim in README.txt | Result |
+| --- | --- |
+| The `.ps1` is blocked when it comes from a downloaded zip | **Confirmed** — "cannot be loaded… is not digitally signed", under the default `CurrentUser = RemoteSigned` |
+| The `.cmd` wrapper gets through | **Confirmed** — installs, exit 0 |
+| Existing fonts are skipped, not overwritten | **Confirmed** on a second run |
+| The font ends up usable | **Confirmed for GDI** — a fresh process enumerating `InstalledFontCollection` sees the family (272 families, the new one among them) |
+
+What it got wrong, and is now fixed:
+
+- **The registry value name must be the font's own face name.** It was written
+  from the filename — `Lobster-Regular (TrueType)` instead of
+  `Lobster (TrueType)`. A value written that way **did not persist**: it was
+  present immediately after the install and gone by the next check, while the
+  font itself stayed usable. `install-fonts.ps1` now reads the real face name
+  out of the file with `PrivateFontCollection` before writing the value, which
+  is what the shell's own installer records.
+- **Nothing told the OS a font had arrived.** Both the script and the Rust
+  `register_font` copied the file and wrote the value and stopped there.
+  Windows' own installer also calls `AddFontResourceW` and broadcasts
+  `WM_FONTCHANGE`; both now do. This is the same class of bug as the macOS
+  asynchronous-registration one in §8.1, with a different remedy.
+
+**Still open — Chromium does not see per-user fonts.** After a successful
+install that GDI could see, Edge 151 could not: the canvas width probe reported
+the family absent, across two fresh Edge launches including one after
+`taskkill`. Windows' own fonts (Arial, Calibri, Segoe UI, Cambria) all probe
+correctly in the same run, so the probe itself works on Windows — it is
+specifically the freshly installed per-user font that Edge cannot reach.
+
+That has a real consequence: **on Windows the web app will keep reporting a
+font as missing after the user installs it.** The desktop build reads the OS
+font registry directly and is unaffected. Whether a logout fixes it is
+untested — the VM rebooted to a lock screen and testing stopped there rather
+than entering credentials.
+
+Two other things the Windows run confirmed, which macOS could not:
+
+- the canvas width-measurement probe correctly identifies Windows-only faces
+  (Segoe UI, Cambria, Calibri) and rejects a control string;
+- the `raw.githubusercontent.com` font fetch clears CORS from Edge on Windows
+  (160,316 bytes, sfnt signature intact).
+
+`queryLocalFonts` was reported absent in that run, but the probe page was
+served over plain HTTP — it is a secure-context API, so that result says
+nothing about Edge. It was not retested.
+
 ### 8.3 Why the Rust side re-validates everything
 
 `install_fonts` writes into the user's font directory, so it does not trust the
@@ -304,12 +367,18 @@ Verified working, end to end:
 
 **Not verified:**
 
-- **Windows, at all.** `install-fonts.ps1` (the bundle's script) has never run
-  on Windows, and neither has the desktop app's Rust `register_font` path,
-  which writes the `HKCU\...\Fonts` registry value. Both were written against
-  Microsoft's documented behaviour and neither has been executed. The Parallels
-  Windows 11 **ARM64** VM is the place to test both — drive it with `.ps1`
-  files, not `powershell -Command`.
+- **The desktop app's Rust `register_font` has never run on Windows.** The
+  bundle's `install-fonts.ps1` now has (see §8.2b), and the two share a
+  convention — face-name registry value, `AddFontResourceW`, `WM_FONTCHANGE` —
+  so the risk is much lower than it was. But it is different code, and the
+  Windows build itself has never been produced: there is no Rust or MSVC
+  toolchain in the VM, and cross-compiling from macOS fails in `tauri-winres`
+  for want of `llvm-rc`. The Win32 FFI block was checked only by compiling an
+  equivalent against stubs on the host, which proves the signatures are
+  well-formed and nothing else.
+- **Whether Chromium ever sees a per-user font**, and whether a logout fixes
+  it — see the open item in §8.2b. The VM rebooted to a lock screen and testing
+  stopped rather than entering credentials.
 - **Linux, at all.** The `fc-cache` path in `post_install_note` and the bundle's
   `install-fonts.sh` are both unexecuted.
 - `install-fonts.command` is syntax-checked (`bash -n`) but has not been run

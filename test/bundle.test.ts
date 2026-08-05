@@ -192,3 +192,45 @@ describe('bundleFilename', () => {
     expect(bundleFilename('a/b:c*d.pptx')).toBe('a_b_c_d — fonts.zip')
   })
 })
+
+/**
+ * These pin the two things that were wrong until they were run on real
+ * Windows 11 (build 26200) — see AGENTS.md §8.2b. Both failures were silent:
+ * the font installed, and then either vanished from the registry or was
+ * invisible to every already-running application.
+ */
+describe('Windows installer', () => {
+  const ps1 = () => {
+    const files = unzipSync(
+      buildBundle({ deckName: 'D.pptx', entries: [freeEntry], unavailable: [] }),
+    )
+    return strFromU8(files['install-fonts.ps1']!)
+  }
+
+  it('names the registry value after the face, not the filename', () => {
+    const s = ps1()
+    // A value named from the filename (`Lobster-Regular (TrueType)`) did not
+    // survive; the shell writes the face name (`Lobster (TrueType)`).
+    expect(s).toContain('PrivateFontCollection')
+    expect(s).toContain('Get-FaceName')
+    expect(s).toMatch(/\$face\$suffix/)
+    expect(s).not.toMatch(/\$valueName = \[System\.IO\.Path\]::GetFileNameWithoutExtension/)
+  })
+
+  it('tells the OS a font arrived', () => {
+    const s = ps1()
+    // Copying the file and writing the value leaves running apps unaware.
+    expect(s).toContain('AddFontResourceW')
+    expect(s).toContain('SendMessageTimeout')
+    expect(s).toContain('0x001D') // WM_FONTCHANGE
+  })
+
+  it('warns that Chromium browsers may still not see the font', () => {
+    const files = unzipSync(
+      buildBundle({ deckName: 'D.pptx', entries: [freeEntry], unavailable: [] }),
+    )
+    const readme = strFromU8(files['README.txt']!)
+    expect(readme).toMatch(/BROWSERS ARE AN EXCEPTION/i)
+    expect(readme).toMatch(/Trust PowerPoint, not the browser/i)
+  })
+})

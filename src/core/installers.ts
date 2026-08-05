@@ -119,6 +119,35 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 $regPath = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'
 New-Item -Path $regPath -Force | Out-Null
 
+# Telling the OS a font arrived is a separate step from putting it there.
+# Windows' own installer calls AddFontResourceW and then broadcasts
+# WM_FONTCHANGE; without that, already-running applications keep the font
+# collection they built at startup.
+Add-Type -Namespace SwInstall -Name Gdi -MemberDefinition @'
+[DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern int AddFontResourceW(string lpFileName);
+
+[DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+public static extern int SendMessageTimeout(
+    IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam,
+    uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+'@ -ErrorAction SilentlyContinue
+
+Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+
+# The registry value name has to be the font's own face name — "Lobster
+# (TrueType)", not "Lobster-Regular (TrueType)" after the file. A name taken
+# from the filename does not survive: on Windows 11 26200 a value written that
+# way was gone by the next check, while the font itself stayed usable.
+function Get-FaceName([string]$file, [string]$fallback) {
+  try {
+    $pfc = New-Object System.Drawing.Text.PrivateFontCollection
+    $pfc.AddFontFile($file)
+    if ($pfc.Families.Count -gt 0 -and $pfc.Families[0].Name) { return $pfc.Families[0].Name }
+  } catch { }
+  return $fallback
+}
+
 $files = Get-ChildItem -Path $src -Include *.ttf,*.otf,*.ttc -File -Recurse
 if ($files.Count -eq 0) {
   Write-Host "No font files found in $src"
@@ -140,18 +169,17 @@ foreach ($f in $files) {
   }
   try {
     Copy-Item -Path $f.FullName -Destination $target -Force
-    # The registry value is what actually makes the font visible to apps —
-    # copying the file alone is not enough. Windows' own installer writes the
-    # face name with a type suffix, e.g. "Poppins Regular (TrueType)", and
-    # omitting the suffix leaves fonts that install but never appear in
-    # application font menus.
-    $valueName = [System.IO.Path]::GetFileNameWithoutExtension($f.Name)
-    if ($f.Extension -ieq '.otf') {
-      $valueName = "$valueName (OpenType)"
-    } else {
-      $valueName = "$valueName (TrueType)"
-    }
-    New-ItemProperty -Path $regPath -Name $valueName -PropertyType String -Value $target -Force | Out-Null
+
+    # Register it with GDI for this session, so the font is usable now rather
+    # than after a logout.
+    [void][SwInstall.Gdi]::AddFontResourceW($target)
+
+    # Then record it, so it survives one. The value name is the face name plus
+    # a type suffix, matching what the shell's own installer writes.
+    $face = Get-FaceName $target ([System.IO.Path]::GetFileNameWithoutExtension($f.Name))
+    $suffix = if ($f.Extension -ieq '.otf') { ' (OpenType)' } else { ' (TrueType)' }
+    New-ItemProperty -Path $regPath -Name "$face$suffix" -PropertyType String -Value $target -Force | Out-Null
+
     Write-Host "  installed: $($f.Name)"
     $installed++
   } catch {
@@ -159,9 +187,16 @@ foreach ($f in $files) {
   }
 }
 
+if ($installed -gt 0) {
+  # Tell every running window a font arrived.
+  $r = [IntPtr]::Zero
+  [void][SwInstall.Gdi]::SendMessageTimeout([IntPtr]0xffff, 0x001D, [IntPtr]::Zero, [IntPtr]::Zero, 0x0002, 5000, [ref]$r)
+}
+
 Write-Host ""
 Write-Host "Done - $installed installed, $skipped already present."
 Write-Host "Applications already running may need restarting to see new fonts."
+Write-Host "Some browsers do not pick up per-user fonts at all - see README.txt."
 Read-Host "Press Enter to close"
 `
 
@@ -258,6 +293,16 @@ WHERE THE FONTS GO
 
   Applications that are already open may need restarting before they see the
   new fonts.
+
+  ON WINDOWS, BROWSERS ARE AN EXCEPTION. PowerPoint, Word and anything else
+  using the normal Windows font stack will pick these up. Chromium-based
+  browsers — Chrome, Edge — do not reliably see fonts installed for a single
+  user, even after a restart. This was measured, not guessed: a font that
+  Windows itself listed correctly stayed invisible to Edge.
+
+  It does not affect your deck. It does mean that if you check with a
+  web-based font tool afterwards, it may still tell you the font is missing.
+  Trust PowerPoint, not the browser.
 
 
 LICENSING
