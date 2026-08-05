@@ -67,6 +67,20 @@ deploy `npx wrangler deploy`.
   `cdn.jsdelivr.net`** in `connect-src`, or downloads fail in production only.
 - **Decide download sources through `downloadPlan()`**, never by branching on
   `r.google` / `r.fontsource` at the call site.
+- **Never add a fetch/download path to `src/core/adobe.ts`.** No such API
+  exists and the licence forbids it. See AGENTS.md §11.
+- **A miss in the Adobe catalogue means "unknown", not "not an Adobe font".**
+  The public feed cannot be fully enumerated — 5,017 of 5,369.
 - **Keep metric-compatible substitutes distinct from merely similar ones.**
   See AGENTS.md §9 — one preserves the deck's line breaks, the other does not.
 - Test fixtures are private decks and stay gitignored.
+
+## Regenerating the Adobe recognition catalogue
+
+```bash
+node scripts/build-adobe-catalogue.mjs
+```
+
+Writes `src/data/adobe-fonts.json`. Takes several minutes — ~560 requests
+against a site with no API contract, deliberately paced. Identify-only: nothing
+in it can be downloaded.

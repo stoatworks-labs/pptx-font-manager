@@ -287,6 +287,25 @@ button:disabled {
   border-left-color: var(--warn);
 }
 
+/*
+ * Adobe Fonts. Informational rather than a fix — there is nothing to download,
+ * so this is neither the green "sorted" nor the amber "careful" of a
+ * substitute. It carries the one insight the tool can offer here: the font is
+ * active on THIS machine and will not be on the venue's.
+ */
+.row .sub.sub-adobe {
+  background: var(--info-bg);
+  color: var(--info);
+  border-left-color: var(--info);
+}
+
+.row .sub.sub-adobe a {
+  color: inherit;
+  font-weight: 620;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .row .actions {
   display: flex;
   gap: 6px;

@@ -1,6 +1,7 @@
 import { parseFontName, resolveInstalled } from '../core/names'
 import { findGoogleFamily, suggestGoogleFamilies, fetchGoogleFaces } from '../core/google'
 import { findFontsourceFamily, fetchFontsourceFaces, type FontsourceMatch } from '../core/fontsource'
+import { findAdobeFamily, type AdobeMatch } from '../core/adobe'
 import { findSubstitutes, type SubstituteMatch } from '../core/substitutes'
 import type { DeckFont, FetchedFace, FontStatus, GoogleMatch } from '../core/types'
 import type { FontInventory } from '../platform/fontcheck'
@@ -14,6 +15,14 @@ export interface ResolvedFont extends FontStatus {
    * we prefer the original repo files over Fontsource's subsetted republish.
    */
   fontsource?: FontsourceMatch
+  /**
+   * The font is an Adobe Font. Identify-only: it can never be downloaded or
+   * bundled, so this exists to explain the situation and link to activation.
+   *
+   * Absence means **unknown**, not "not an Adobe font" — the public catalogue
+   * cannot be fully enumerated. See `src/core/adobe.ts`.
+   */
+  adobe?: AdobeMatch
   /**
    * Curated stand-ins for a font that cannot be redistributed — Carlito for
    * Calibri, Arimo for Arial. Set only when the font is missing and nothing
@@ -79,6 +88,34 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
   const needsFallback = state === 'missing' && !google?.downloadable && !fontsource
   const substitutes = needsFallback ? findSubstitutes(parsed) : null
 
+  /*
+   * Adobe recognition, but ONLY for a font that is actually missing.
+   *
+   * Two conditions, and the second is not obvious.
+   *
+   * If Google or Fontsource has the family — Source Sans and friends are on
+   * Google Fonts under OFL — pointing at a Creative Cloud subscription would be
+   * actively unhelpful.
+   *
+   * The `missing` requirement is there because **Adobe Fonts resells the
+   * Microsoft system fonts**. Monotype lists Calibri, Times New Roman, Courier
+   * New, Segoe UI and Wingdings there, all genuine catalogue entries. Applying
+   * the note to an installed font therefore tells someone that Times New Roman
+   * "cannot travel with the deck and will break elsewhere" — true of an Adobe
+   * exclusive, nonsense for a font that ships with both Windows and macOS. That
+   * is precisely the false alarm §2.2 exists to prevent.
+   *
+   * The cost is real: we lose the warning for the case that matters most, a
+   * genuinely Adobe-only face like Proxima Nova that is synced here and absent
+   * at the venue. Recovering it means telling a CoreSync-synced font from an
+   * OS-bundled one, which needs the desktop app to expose font file paths — the
+   * font would sit under
+   * `~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r/`.
+   * Until that exists, staying quiet beats crying wolf.
+   */
+  const adobe =
+    state === 'missing' && !google?.downloadable && !fontsource ? findAdobeFamily(parsed) : null
+
   return {
     font,
     state,
@@ -86,6 +123,7 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
     matchedFamily,
     google: google ?? undefined,
     fontsource: fontsource ?? undefined,
+    adobe: adobe ?? undefined,
     // A real font or a curated substitute both beat token-overlap guesswork,
     // so the fuzzy suggestions stand down when either exists.
     suggestions:

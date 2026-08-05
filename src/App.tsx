@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scanPptx } from './core/scan'
 import { fetchGoogleFaces, CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
 import { FONTSOURCE_COUNT } from './core/fontsource'
+import { adobeBundleNote } from './core/adobe'
 import { buildBundle, bundleFilename, localLicenseNote, type BundleEntry } from './core/bundle'
 import {
   downloadPlan,
@@ -356,6 +357,14 @@ export default function App() {
           }
         }
 
+        // An Adobe font has a specific, actionable reason for its absence.
+        // "Not on Google Fonts" would be true but useless — it implies we
+        // simply failed to find it, when in fact it may not legally be here.
+        if (r.adobe) {
+          unavailable.push({ name: font.name, reason: adobeBundleNote(r.adobe) })
+          continue
+        }
+
         unavailable.push({
           name: font.name,
           reason: desktop
@@ -677,6 +686,18 @@ function FontRow({
           {detail.length > 0 && ' · '}
           {detail.join(' · ')}
         </div>
+        {r.adobe && (
+          <div className="sub sub-adobe">
+            <strong>{r.adobe.family}</strong> is an Adobe Font
+            {r.adobe.foundry ? ` (${r.adobe.foundry})` : ''}, so it cannot travel with the
+            deck — Adobe’s licence does not permit putting the file in a bundle.{' '}
+            Anyone with a Creative Cloud subscription can activate it.{' '}
+            <a href={r.adobe.url} target="_blank" rel="noreferrer noopener">
+              Activate on Adobe Fonts
+            </a>
+            {r.adobe.hasOpenSourceCut && ' · an open-source cut of this family also exists'}
+          </div>
+        )}
         {sub && best && (
           <div className={`sub ${best.metric ? 'sub-metric' : 'sub-similar'}`}>
             <strong>{best.family}</strong> can stand in for {sub.target}.{' '}

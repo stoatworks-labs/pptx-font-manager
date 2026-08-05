@@ -433,3 +433,77 @@ typeface rather than a copy of what was asked for.
 `raw.githubusercontent.com`. Verified under the real production headers via
 `npm run serve:dist`, with `fonts.googleapis.com` as a negative control to
 confirm the policy is actually being enforced rather than merely permissive.
+
+---
+
+## 11. Adobe Fonts: recognition only, and why that is the whole story
+
+`src/core/adobe.ts` can identify an Adobe font. It can never download one, and
+**no amount of signing in would change that.** Two independent blockers:
+
+1. **There is no font-file endpoint.** The Typekit/Adobe Fonts API is still live
+   — `typekit.com/api/v1` answers 401, not 404 — but it does kit management and
+   metadata only. Desktop faces reach a machine solely through Creative Cloud
+   sync, into an obfuscated CoreSync directory
+   (`~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r/` on
+   macOS). There is nothing to authenticate *to* for a file.
+2. **The licence forbids this app's entire workflow.** Adobe's documentation
+   states the fonts "are not compatible with packaging workflows that involve
+   transferring font files to another user or computer", and the terms do not
+   permit copying font files or distributing them so others can use them
+   directly. A sidecar `.zip` handed to a venue is that transfer.
+
+So do not add a fetcher here. There is a test asserting the module exports no
+`fetch`/`download`/`install` function, precisely so a future reader who has not
+read this section cannot quietly add one.
+
+### What it is actually for
+
+For a **missing** font, it names the reason and links to activation. "Not on
+Google Fonts" is true but reads as a failure of the tool; "Adobe's licence does
+not permit putting this in a bundle, here is where a subscriber activates it"
+is actionable. Compare §5 on MTX embeds: reporting the truth beats a fix that
+cannot exist.
+
+### Why it fires ONLY for missing fonts — the trap
+
+**Adobe Fonts resells the Microsoft system fonts.** Monotype lists Calibri,
+Times New Roman, Courier New, Segoe UI and Wingdings there. Those are genuine
+catalogue entries, not matching bugs.
+
+So a catalogue hit does not mean "this font is exotic and cannot travel". An
+early cut of this feature applied the note to installed fonts too, in order to
+warn about the most dangerous deck there is — the one that **works perfectly for
+its author and breaks everywhere else**, because an Adobe font synced by
+Creative Cloud registers with the OS like any other. Run against a real deck, it
+told the user that *Times New Roman* "cannot travel with the deck and will break
+elsewhere". That is the §2.2 false alarm in a new costume.
+
+The lost warning is a real cost, and recovering it needs something this codebase
+does not have yet: the ability to tell a **CoreSync-synced** font from an
+OS-bundled one. On macOS a synced face lives under
+`~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r/` with an
+obfuscated filename, so the desktop app could prove it by exposing font file
+paths — `LocalFontFile` currently carries only `filename` and `size`. Until
+then, silence beats crying wolf, and there is a test pinning both halves:
+Times New Roman installed gets no flag, Proxima Nova missing still does.
+
+### The catalogue may only ever assert POSITIVES
+
+`fonts.adobe.com/fonts.json` reports 5,369 families, sends no CORS header
+(so it is baked at build time, like the Google one), and **cannot be fully
+enumerated**:
+
+- page size is fixed at 12 — `limit` and `per_page` are ignored;
+- it hard-caps at **page 200**, so the plain feed reaches exactly 2,400;
+- `?filters=cl:xx` partitions it differently, but the 13 classification slices
+  total 4,189 *before* dedup.
+
+The build script unions the feed with every classification slice, which gets
+closer, but completeness is not achievable from the public endpoint.
+
+**Therefore a name that is absent means "unknown", never "not an Adobe font".**
+`findAdobeFamily` returning null must stay silent in the UI. Do not add a
+`definitelyNotAdobe` helper — the data cannot support one. The catalogue records
+`libraryTotal` alongside `count` so the gap is visible in the data itself, and a
+test asserts `count < libraryTotal` so the incompleteness cannot be forgotten.

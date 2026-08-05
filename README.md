@@ -71,6 +71,13 @@ Where only a visually similar face exists (Open Sans for Segoe UI), it says so
 plainly — that swap *will* move your line breaks, and being told the deck is
 fixed when it is not is worse than being told the font is missing.
 
+**Recognises Adobe Fonts.** These can never be bundled — Adobe's terms say the
+fonts "are not compatible with packaging workflows that involve transferring
+font files to another user or computer", and there is no API that serves the
+files in any case. So for a missing one the app names the reason and links
+straight to the family page, where anyone with a Creative Cloud subscription can
+activate it.
+
 **Reports embedded fonts** — fonts that travel inside the deck and need no
 installation at all. Where the format allows, it extracts them as real
 installable files (see below).
