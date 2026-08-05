@@ -113,12 +113,46 @@ manifest before you send it to anyone.
 
 ---
 
+## The desktop app
+
+The browser version can tell you a font is missing and hand you a zip. It
+cannot put the font where the OS looks for it — no browser can. The desktop
+build is the same app with that last step joined up: find the missing fonts,
+fetch them, and **install them**, in one press.
+
+It is also more accurate. It reads the platform's own font registry rather than
+measuring text widths, so it resolves *faces* and not just families:
+`Helvetica Neue Medium` comes back as installed rather than "the family is
+there, the weight might not be".
+
+Fonts go to your own account — `~/Library/Fonts`,
+`%LOCALAPPDATA%\Microsoft\Windows\Fonts`, `~/.local/share/fonts` — so no
+administrator password is needed, and anything already installed is skipped
+rather than overwritten.
+
+```bash
+npm run desktop:dev      # run it
+npm run desktop:build    # .app / .dmg / .msi / .deb / .AppImage
+```
+
+> **macOS and Linux only, so far.** The Windows install path is written but has
+> never been run on Windows, and the same goes for Linux. See
+> [AGENTS.md](AGENTS.md) §9 for exactly what is and is not verified.
+
 ## Development
 
 ```bash
 npm install
 npm run dev
 npm test
+```
+
+Fixtures: the real decks used for testing are private and gitignored. A
+synthetic one is generated and committed, so the suite tests something on a
+clean clone:
+
+```bash
+node scripts/make-test-deck.mjs
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the full command reference and

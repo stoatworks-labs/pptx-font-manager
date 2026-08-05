@@ -1,0 +1,50 @@
+[package]
+name = "pptx-font-manager"
+version = "0.1.0"
+description = "Scan a PowerPoint deck for the fonts it uses, and install the ones that are missing."
+authors = ["Stoatworks Labs"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "pptx_font_manager_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Font enumeration through the OS's own registry — CoreText on macOS,
+# DirectWrite on Windows, fontconfig on Linux. Deliberately not a crate that
+# parses every file on disk: this machine has 11,630 installed font files and
+# the OS already has them indexed.
+font-kit = "0.14"
+
+dirs = "6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Writing a file into ~/Library/Fonts does make macOS pick it up, but only
+# **asynchronously** — measured at roughly ten seconds on an M-series Mac.
+# Explicit registration closes that window; see `register_font` in fonts.rs.
+# Version tracks font-kit's own core-foundation so only one copy is linked.
+core-foundation = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+# Installing a font on Windows needs a registry value as well as a file copy —
+# see fonts.rs. Without it the font lands on disk and never appears in any
+# application's font menu.
+winreg = "0.56"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

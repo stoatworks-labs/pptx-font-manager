@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window is allowed to do. Deliberately small: font enumeration and installation go through this app's own commands, which do their own path and format validation, so no filesystem plugin is granted. The dialog plugin is for picking a .pptx; the opener is for the links in the footer.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "opener:allow-open-url"
+  ]
+}

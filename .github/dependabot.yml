@@ -26,3 +26,15 @@ updates:
       npm-minor-and-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+  # The desktop port's crates. Dependabot will not find these from the root —
+  # a Tauri project needs its own entry pointing at /src-tauri, because that is
+  # where Cargo.toml lives and there is none at the repo root.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

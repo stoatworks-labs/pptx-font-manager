@@ -1,15 +1,23 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scanPptx } from './core/scan'
-import { fetchGoogleFaces } from './core/google'
-import { CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
+import { fetchGoogleFaces, CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
 import { buildBundle, bundleFilename, localLicenseNote, type BundleEntry } from './core/bundle'
 import { resolveAll, summarize, type ResolvedFont } from './lib/resolve'
 import {
-  defaultInventory,
+  bestInventory,
   hasLocalFontAccess,
+  isDesktop,
   queryLocalFontInventory,
   type FontInventory,
-} from './platform/fontcheck'
+} from './platform'
+import { defaultInventory } from './platform/fontcheck'
+import {
+  fontInstallDir,
+  installFonts,
+  listInstalledFontFiles,
+  readInstalledFontFile,
+  type InstallReport,
+} from './platform/native'
 import type { ScanResult } from './core/types'
 
 declare const __APP_VERSION__: string
@@ -21,7 +29,6 @@ const TIER_LABEL: Record<string, string> = {
 }
 
 function download(data: Uint8Array, filename: string) {
-  // Copy into a fresh ArrayBuffer — the view may be a subarray of a larger one.
   const copy = new Uint8Array(data.length)
   copy.set(data)
   const url = URL.createObjectURL(new Blob([copy], { type: 'application/octet-stream' }))
@@ -35,43 +42,71 @@ function download(data: Uint8Array, filename: string) {
 }
 
 export default function App() {
-  const [deckName, setDeckName] = useState<string>('')
+  const desktop = isDesktop()
+
+  const [deckName, setDeckName] = useState('')
   const [scan, setScan] = useState<ScanResult | null>(null)
   const [inventory, setInventory] = useState<FontInventory>(() => defaultInventory())
+  const [installDir, setInstallDir] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [bundling, setBundling] = useState(false)
+  const [report, setReport] = useState<InstallReport | null>(null)
   const [showAll, setShowAll] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!desktop) return
+    fontInstallDir().then(setInstallDir).catch(() => setInstallDir(null))
+  }, [desktop])
+
+  /**
+   * Rebuild the inventory whenever the deck changes.
+   *
+   * The native path resolves face names lazily, so it needs to know which
+   * families to look inside — which means it cannot be built until there is a
+   * scan to ask about.
+   */
+  const refreshInventory = useCallback(async (result: ScanResult) => {
+    const wanted = result.fonts.flatMap((f) => [f.name, f.family])
+    setInventory(await bestInventory(wanted))
+  }, [])
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setError(null)
+      setScan(null)
+      setReport(null)
+      setBusy('Reading presentation…')
+      try {
+        const buf = new Uint8Array(await file.arrayBuffer())
+        const result = scanPptx(buf)
+        setDeckName(file.name)
+        setScan(result)
+        await refreshInventory(result)
+      } catch (e) {
+        setError((e as Error).message)
+      } finally {
+        setBusy(null)
+      }
+    },
+    [refreshInventory],
+  )
 
   const resolved: ResolvedFont[] = useMemo(
     () => (scan ? resolveAll(scan.fonts, inventory) : []),
     [scan, inventory],
   )
   const summary = useMemo(() => summarize(resolved), [resolved])
-
   const visible = useMemo(
     () => (showAll ? resolved : resolved.filter((r) => r.font.tier !== 'elsewhere')),
     [resolved, showAll],
   )
   const hiddenCount = resolved.length - visible.length
-
-  const handleFile = useCallback(async (file: File) => {
-    setError(null)
-    setScan(null)
-    setBusy('Reading presentation…')
-    try {
-      const buf = new Uint8Array(await file.arrayBuffer())
-      const result = scanPptx(buf)
-      setDeckName(file.name)
-      setScan(result)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy(null)
-    }
-  }, [])
+  const installable = useMemo(
+    () => resolved.filter((r) => r.state === 'missing' && r.google?.downloadable),
+    [resolved],
+  )
 
   const upgradeInventory = useCallback(async () => {
     setError(null)
@@ -87,7 +122,41 @@ export default function App() {
     }
   }, [])
 
-  /** Download a single missing font from Google Fonts. */
+  /** Desktop: download and install, in one step. */
+  const install = useCallback(
+    async (targets: ResolvedFont[]) => {
+      if (targets.length === 0) return
+      setError(null)
+      setReport(null)
+      const files: Array<{ filename: string; data: Uint8Array }> = []
+      try {
+        for (const r of targets) {
+          if (!r.google?.downloadable) continue
+          setBusy(`Downloading ${r.google.family}…`)
+          const faces = await fetchGoogleFaces(r.google.family, [r.font.weight], {
+            italics: r.font.italic,
+          })
+          for (const f of faces) files.push({ filename: f.filename, data: f.data })
+        }
+        if (files.length === 0) {
+          setError('Nothing to install — no downloadable font was found for those.')
+          return
+        }
+        setBusy(`Installing ${files.length} font file${files.length === 1 ? '' : 's'}…`)
+        const result = await installFonts(files)
+        setReport(result)
+        // Re-check what is installed so the list reflects reality.
+        if (scan) await refreshInventory(scan)
+      } catch (e) {
+        setError((e as Error).message)
+      } finally {
+        setBusy(null)
+      }
+    },
+    [scan, refreshInventory],
+  )
+
+  /** Browser: download the font files for the user to install themselves. */
   const getOne = useCallback(async (r: ResolvedFont) => {
     if (!r.google?.downloadable) return
     setBusy(`Downloading ${r.google.family}…`)
@@ -104,11 +173,11 @@ export default function App() {
     }
   }, [])
 
-  /** Build the sidecar bundle. */
   const makeBundle = useCallback(async () => {
     if (!scan) return
-    setBundling(true)
+    setBusy('Building bundle…')
     setError(null)
+    setReport(null)
     const entries: BundleEntry[] = []
     const unavailable: Array<{ name: string; reason: string }> = []
 
@@ -116,7 +185,6 @@ export default function App() {
       for (const r of resolved) {
         const font = r.font
 
-        // 1. Embedded and extractable — take it straight from the deck.
         if (font.embedded?.extracted?.length) {
           for (const face of font.embedded.extracted) {
             entries.push({
@@ -142,7 +210,6 @@ export default function App() {
           continue
         }
 
-        // 2. On Google Fonts — fetch the real static TTF.
         if (r.google?.downloadable) {
           setBusy(`Fetching ${r.google.family}…`)
           try {
@@ -167,19 +234,46 @@ export default function App() {
           }
         }
 
-        // 3. Installed locally and we can read the bytes (Local Font Access).
+        // Read it off this machine. Desktop does this without a prompt;
+        // the browser needs Local Font Access to have been granted.
+        const family = r.matchedFamily ?? font.family
+        const note = localLicenseNote(font, r.google ?? null)
+
+        if (desktop && r.state !== 'missing') {
+          setBusy(`Reading ${family} from this machine…`)
+          try {
+            const list = await listInstalledFontFiles(family)
+            let added = 0
+            for (let i = 0; i < list.length; i++) {
+              const data = await readInstalledFontFile(family, i)
+              entries.push({
+                filename: list[i]!.filename,
+                data,
+                family: font.family,
+                source: 'local',
+                license: note.license,
+                redistributable: note.redistributable,
+                provenance: `copied from this machine (${list[i]!.filename})`,
+              })
+              added++
+            }
+            if (added > 0) continue
+          } catch {
+            /* fall through to the unavailable list */
+          }
+        }
+
         const records = inventory.records
         if (records) {
-          const wanted = (r.matchedFamily ?? font.family).toLowerCase()
+          const wanted = family.toLowerCase()
           const hits = records.filter((rec) => rec.family?.toLowerCase() === wanted)
           if (hits.length > 0 && hits[0]!.blob) {
-            setBusy(`Reading ${font.family} from your system…`)
+            setBusy(`Reading ${family} from your system…`)
             let added = 0
             for (const hit of hits) {
               try {
                 const blob = await hit.blob!()
                 const data = new Uint8Array(await blob.arrayBuffer())
-                const note = localLicenseNote(font, r.google ?? null)
                 entries.push({
                   filename: `${hit.postscriptName || hit.fullName || font.family}.ttf`,
                   data,
@@ -200,12 +294,14 @@ export default function App() {
 
         unavailable.push({
           name: font.name,
-          reason: hasLocalFontAccess()
-            ? inventory.records
-              ? 'Not on Google Fonts, and the font file could not be read from this machine.'
-              : 'Not on Google Fonts. Grant local font access to include fonts you already have.'
-            : 'Not on Google Fonts, and this browser cannot read local font files. ' +
-              'Open in Chrome or Edge to include fonts already installed here.',
+          reason: desktop
+            ? 'Not on Google Fonts, and no readable font file for it was found on this machine.'
+            : hasLocalFontAccess()
+              ? inventory.records
+                ? 'Not on Google Fonts, and the font file could not be read from this machine.'
+                : 'Not on Google Fonts. Grant local font access to include fonts you already have.'
+              : 'Not on Google Fonts, and this browser cannot read local font files. ' +
+                'Open in Chrome or Edge, or use the desktop app, to include fonts already installed here.',
         })
       }
 
@@ -217,15 +313,13 @@ export default function App() {
         return
       }
 
-      const zip = buildBundle({ deckName, entries, unavailable })
-      download(zip, bundleFilename(deckName))
+      download(buildBundle({ deckName, entries, unavailable }), bundleFilename(deckName))
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setBusy(null)
-      setBundling(false)
     }
-  }, [scan, resolved, inventory, deckName])
+  }, [scan, resolved, inventory, deckName, desktop])
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -241,8 +335,9 @@ export default function App() {
     <>
       <h1>PowerPoint Font Manager</h1>
       <p className="sub">
-        Find the fonts a deck actually uses, check which are installed here, and build a sidecar
-        bundle so it opens correctly somewhere else. The file never leaves your browser.
+        Find the fonts a deck actually uses, check which are installed here, and{' '}
+        {desktop ? 'install the ones that are missing' : 'build a sidecar bundle for the machine that needs them'}.
+        {!desktop && ' The file never leaves your browser.'}
       </p>
 
       <div
@@ -261,7 +356,9 @@ export default function App() {
         }}
       >
         <strong>{deckName || 'Drop a .pptx here'}</strong>
-        <span>{deckName ? 'Drop another to replace it' : 'or click to choose — .pptx, .potx, .ppsx'}</span>
+        <span>
+          {deckName ? 'Drop another to replace it' : 'or click to choose — .pptx, .potx, .ppsx'}
+        </span>
         <input
           ref={fileRef}
           type="file"
@@ -285,6 +382,8 @@ export default function App() {
           {error}
         </p>
       )}
+
+      {report && <InstallSummary report={report} />}
 
       {scan && (
         <>
@@ -315,7 +414,7 @@ export default function App() {
             )}
           </div>
 
-          {inventory.method === 'canvas-metrics' && hasLocalFontAccess() && (
+          {!desktop && inventory.method === 'canvas-metrics' && hasLocalFontAccess() && (
             <div className="note info">
               Detecting fonts by measuring text width — accurate, but it cannot read font files.{' '}
               <strong>Grant access to your font list</strong> to include fonts you already have in
@@ -325,21 +424,27 @@ export default function App() {
             </div>
           )}
 
-          {inventory.method === 'canvas-metrics' && !hasLocalFontAccess() && (
+          {!desktop && inventory.method === 'canvas-metrics' && !hasLocalFontAccess() && (
             <div className="note info">
               This browser has no Local Font Access API, so fonts are detected by measuring text
               width. That is reliable for checking what is installed, but fonts you already own
-              cannot be read into a bundle. Chrome or Edge can do both.
+              cannot be read into a bundle. Chrome, Edge, or the desktop app can do both.
             </div>
           )}
 
           <div className="bar">
-            <button
-              className="primary"
-              onClick={() => void makeBundle()}
-              disabled={bundling || summary.total === 0}
-            >
-              {bundling ? 'Building…' : 'Build font bundle (.zip)'}
+            {desktop && installable.length > 0 && (
+              <button
+                className="primary"
+                onClick={() => void install(installable)}
+                disabled={!!busy}
+              >
+                Install {installable.length} missing font
+                {installable.length === 1 ? '' : 's'}
+              </button>
+            )}
+            <button onClick={() => void makeBundle()} disabled={!!busy || summary.total === 0}>
+              Build font bundle (.zip)
             </button>
             <div className="spacer" />
             {hiddenCount > 0 && (
@@ -349,9 +454,23 @@ export default function App() {
             )}
           </div>
 
+          {desktop && installDir && (
+            <p className="note info" style={{ fontSize: 12.5 }}>
+              Fonts install to <code>{installDir}</code> — your own account, no administrator
+              password. Fonts already there are never overwritten.
+            </p>
+          )}
+
           <div className="fonts">
             {visible.map((r) => (
-              <FontRow key={r.font.name} r={r} onGet={() => void getOne(r)} busy={!!busy} />
+              <FontRow
+                key={r.font.name}
+                r={r}
+                desktop={desktop}
+                busy={!!busy}
+                onGet={() => void getOne(r)}
+                onInstall={() => void install([r])}
+              />
             ))}
           </div>
 
@@ -385,16 +504,48 @@ export default function App() {
       )}
 
       <footer>
-        {scan
-          ? `${scan.slideCount} slide${scan.slideCount === 1 ? '' : 's'} scanned · `
-          : ''}
+        {scan ? `${scan.slideCount} slide${scan.slideCount === 1 ? '' : 's'} scanned · ` : ''}
+        {desktop ? 'Desktop · ' : ''}
         Google Fonts catalogue: {CATALOGUE_COUNT} families, {CATALOGUE_DATE} · {__APP_VERSION__}
       </footer>
     </>
   )
 }
 
-function FontRow({ r, onGet, busy }: { r: ResolvedFont; onGet: () => void; busy: boolean }) {
+function InstallSummary({ report }: { report: InstallReport }) {
+  const failures = report.outcomes.filter((o) => o.status === 'failed')
+  const cls = failures.length > 0 ? 'warn' : 'info'
+  return (
+    <div className={`note ${cls}`} style={{ marginTop: 16 }}>
+      <strong>
+        {report.installed} installed
+        {report.skipped > 0 && `, ${report.skipped} already present`}
+        {report.failed > 0 && `, ${report.failed} failed`}
+      </strong>
+      <div style={{ fontSize: 12.5, marginTop: 4 }}>{report.dir}</div>
+      {report.note && <div style={{ marginTop: 6 }}>{report.note}</div>}
+      {failures.map((f) => (
+        <div key={f.filename} style={{ marginTop: 6, fontSize: 12.5 }}>
+          <strong>{f.filename}</strong> — {f.detail}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function FontRow({
+  r,
+  desktop,
+  busy,
+  onGet,
+  onInstall,
+}: {
+  r: ResolvedFont
+  desktop: boolean
+  busy: boolean
+  onGet: () => void
+  onInstall: () => void
+}) {
   const { font } = r
 
   const pill =
@@ -433,22 +584,25 @@ function FontRow({ r, onGet, busy }: { r: ResolvedFont; onGet: () => void; busy:
     detail.push(`similar on Google Fonts: ${r.suggestions.map((s) => s.family).join(', ')}`)
   }
 
+  const canFetch = r.google?.downloadable
+  const wants = r.state === 'missing' || r.state === 'family-installed'
+
   return (
     <div className="row">
       <div>
         <div className="name">{font.name}</div>
         <div className="meta">
-          <span className="pill tier">{TIER_LABEL[font.tier]}</span>{' '}
-          {font.count} reference{font.count === 1 ? '' : 's'}
+          <span className="pill tier">{TIER_LABEL[font.tier]}</span> {font.count} reference
+          {font.count === 1 ? '' : 's'}
           {detail.length > 0 && ' · '}
           {detail.join(' · ')}
         </div>
       </div>
       <div className="actions">
         {pill}
-        {r.state === 'missing' && r.google?.downloadable && (
-          <button onClick={onGet} disabled={busy}>
-            Download
+        {wants && canFetch && (
+          <button onClick={desktop ? onInstall : onGet} disabled={busy}>
+            {desktop ? 'Install' : 'Download'}
           </button>
         )}
       </div>

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PowerPoint Font Manager",
+  "version": "0.1.0",
+  "identifier": "com.stoatworks.pptxfontmanager",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --port 5188 --strictPort",
+    "devUrl": "http://localhost:5188",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PowerPoint Font Manager",
+        "width": 980,
+        "height": 780,
+        "minWidth": 620,
+        "minHeight": 480,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; font-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost https://raw.githubusercontent.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "nsis", "deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "copyright": "Copyright (c) 2026 Stoatworks Labs",
+    "category": "Utility",
+    "shortDescription": "Deck font scanner and installer",
+    "longDescription": "Scan a PowerPoint presentation for the fonts it actually uses, check which are installed, and install the missing ones."
+  }
+}

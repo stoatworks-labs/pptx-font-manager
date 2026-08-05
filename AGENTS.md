@@ -200,31 +200,125 @@ browser inflates hundreds of MB of video for nothing.
 
 ---
 
-## 8. State of play
+## 8. The desktop port
 
-Verified working, end to end in a real browser:
+Same repo, same `src/core/`. Only `src/platform/native.ts` and the factory in
+`src/platform/index.ts` differ from the web build, plus `src-tauri/`. Tauri v2.
+
+```bash
+npm run desktop:dev      # tauri dev  (drives vite on 5188 — the port must match devUrl)
+npm run desktop:build    # bundles .app/.dmg/.nsis/.deb/.appimage
+cd src-tauri && cargo test
+cd src-tauri && cargo run --example probe           # native enumeration vs ground truth
+cd src-tauri && cargo run --example install_probe   # real install, then `-- clean`
+```
+
+### 8.1 Two traps found by testing, not by reading
+
+**`window.__TAURI__` does not exist.** It is only injected when
+`withGlobalTauri` is set in `tauri.conf.json`, which it is not. Sniffing for it
+reports every desktop launch as a browser: the app runs, looks completely
+normal, and silently loses the only feature it was built for. Use `isTauri()`
+from `@tauri-apps/api/core`.
+
+**macOS font registration is asynchronous.** Writing a file into
+`~/Library/Fonts` *does* work — but the font server picks it up on its own
+schedule, measured at roughly **ten seconds** on an M-series Mac. That is long
+enough to be a bug and not a delay, because the install flow immediately
+re-checks what is installed and would truthfully report the font it just
+installed as still missing. `register_font` calls
+`CTFontManagerRegisterFontsForURL` with user scope, which makes it visible
+synchronously. Verified causally: absent (2232 families) -> install -> visible
+in the same process (2233).
+
+### 8.2 Watch out when testing font installation on this machine
+
+`~/Library/Fonts/google-fonts/` is a **clone of the entire google/fonts repo**,
+and macOS scans that directory recursively. Roughly 1,900 Google families are
+therefore already installed, and `ls ~/Library/Fonts | grep -i <name>` will not
+show them because they are in subdirectories.
+
+This invalidates the obvious test. Picking any well-known Google font as an
+"install this missing font" target proves nothing, because it is already there.
+Find a genuinely absent family first:
+
+```bash
+cd src-tauri && cargo run --example probe   # then diff against src/data/google-fonts.json
+```
+
+At the time of writing 113 of the 1,942 catalogued families were not visible to
+CoreText; `Asimovian` is the one the install probe uses.
+
+### 8.3 Why the Rust side re-validates everything
+
+`install_fonts` writes into the user's font directory, so it does not trust the
+frontend:
+
+- filenames must be plain font filenames — no separators, no `..`, and a
+  `.ttf`/`.otf`/`.ttc` extension;
+- the bytes must start with a real sfnt signature. This is not a formality: a
+  failed download returns an **HTML error page**, and writing that into the
+  font directory is how a font manager corrupts a font book;
+- existing files are skipped, never overwritten;
+- if the OS-registration step fails the written file is removed again, rather
+  than leaving a font that half exists.
+
+Because of that validation the Tauri capability set grants **no filesystem
+plugin** — everything goes through these commands.
+
+### 8.4 Face names are resolved lazily
+
+`font_inventory` takes the list of names the deck wants. Families come back in
+full (2,232 here, ~210 ms), but face names do not: reading the name table of
+all 11,630 installed font files to answer a question about five of them takes
+seconds. Only the families that prefix-match something the deck asked for get
+their faces loaded.
+
+This is what makes the desktop build *more* accurate than the web one.
+`Helvetica Neue Medium` resolves to an exact installed **face**, so it reports
+"Installed" rather than the browser's best answer of "family only".
+
+## 9. State of play
+
+Verified working, end to end:
+
+*Web build, in a real browser:*
 
 - scanning all three fixture shapes, including the 316 MB one
 - installed/missing verdicts matching CoreText ground truth on this Mac
 - embedded-EOT extraction to a valid TTF
 - bundle .zip: structure, manifest, installer scripts, line endings, exec bits
-- Google Fonts download over CORS from a page origin
+- Google Fonts download over CORS from a page origin, under the production CSP
+
+*Desktop build, on macOS:*
+
+- app launches, detects desktop mode, native inventory (2,232 families, ~210 ms)
+- native face resolution beating the browser: `Helvetica Neue Medium` and
+  `Times Roman` both resolve as exact installed faces
+- **real font install**, verified causally against a genuinely absent family:
+  absent -> download from google/fonts -> installed -> visible to CoreText in
+  the same process
+- install guards: HTML error page refused, path traversal refused, existing
+  file skipped rather than overwritten
 
 **Not verified:**
 
-- `install-fonts.ps1` has never been run on Windows. PowerShell is not installed
-  on the dev Mac. The syntax has been reviewed and the registry-value convention
-  (`Name (TrueType)`) is per Microsoft's documented behaviour, but it is
-  untested. The Parallels Windows 11 ARM64 VM is the place to test it.
-- `install-fonts.command` / `.sh` are syntax-checked (`bash -n`, `sh -n`) but
-  have not been run against a real font install, to avoid writing to the dev
-  machine's font library.
+- **Windows, at all.** `install-fonts.ps1` (the bundle's script) has never run
+  on Windows, and neither has the desktop app's Rust `register_font` path,
+  which writes the `HKCU\...\Fonts` registry value. Both were written against
+  Microsoft's documented behaviour and neither has been executed. The Parallels
+  Windows 11 **ARM64** VM is the place to test both — drive it with `.ps1`
+  files, not `powershell -Command`.
+- **Linux, at all.** The `fc-cache` path in `post_install_note` and the bundle's
+  `install-fonts.sh` are both unexecuted.
+- `install-fonts.command` is syntax-checked (`bash -n`) but has not been run
+  against a real font install — the desktop app's own install path was tested
+  instead, since that is the one people will use.
 - The Local Font Access path (`queryLocalFonts`) is implemented but the
   permission prompt has not been accepted in a test run, so blob-reading of
-  locally installed fonts is unexercised.
-
-The desktop port is not started. When it happens, `src/core/` should move over
-unchanged — that is why it has no DOM dependency. The desktop app is what makes
-**auto-install** possible; a browser fundamentally cannot write to a font
-directory, which is why the web app's ceiling is "here is a zip, run the
-installer".
+  locally installed fonts in the browser is unexercised.
+- The desktop app has not been driven through a full deck-to-install cycle in
+  its own window; the install path was exercised through
+  `cargo run --example install_probe` instead.
+- No code signing or notarisation yet, so a distributed build will hit
+  Gatekeeper.
