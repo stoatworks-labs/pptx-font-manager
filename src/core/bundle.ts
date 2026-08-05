@@ -27,7 +27,7 @@ import type { DeckFont, GoogleMatch } from './types'
  * own machines — without pretending a foundry font is free to hand around.
  */
 
-export type FontSource = 'google' | 'embedded' | 'local' | 'substitute'
+export type FontSource = 'google' | 'fontsource' | 'embedded' | 'local' | 'substitute'
 
 export interface BundleEntry {
   /** Filename inside fonts/. */

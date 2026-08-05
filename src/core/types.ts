@@ -118,6 +118,24 @@ export interface FontStatus {
   google?: GoogleMatch
 }
 
+/**
+ * A font file fetched from a remote catalogue, ready to install or bundle.
+ *
+ * Shared by every download source (Google Fonts, Fontsource) so the bundle
+ * builder does not care where a face came from.
+ */
+export interface FetchedFace {
+  filename: string
+  data: Uint8Array
+  family: string
+  weight: number
+  italic: boolean
+  /** SPDX id. */
+  license: string
+  /** True when the file is a variable font covering multiple weights. */
+  variable: boolean
+}
+
 export interface GoogleMatch {
   family: string
   /** True when the deck's family name equals the Google family name. */

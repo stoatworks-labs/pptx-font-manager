@@ -1,12 +1,19 @@
 import { parseFontName, resolveInstalled } from '../core/names'
-import { findGoogleFamily, suggestGoogleFamilies } from '../core/google'
+import { findGoogleFamily, suggestGoogleFamilies, fetchGoogleFaces } from '../core/google'
+import { findFontsourceFamily, fetchFontsourceFaces, type FontsourceMatch } from '../core/fontsource'
 import { findSubstitutes, type SubstituteMatch } from '../core/substitutes'
-import type { DeckFont, FontStatus, GoogleMatch } from '../core/types'
+import type { DeckFont, FetchedFace, FontStatus, GoogleMatch } from '../core/types'
 import type { FontInventory } from '../platform/fontcheck'
 
 export interface ResolvedFont extends FontStatus {
   /** Alternatives when the font is missing and not on Google Fonts. */
   suggestions: GoogleMatch[]
+  /**
+   * Fontsource match, for the ~120 open families Google Fonts does not carry.
+   * Checked only when Google has nothing, since for anything Google does have
+   * we prefer the original repo files over Fontsource's subsetted republish.
+   */
+  fontsource?: FontsourceMatch
   /**
    * Curated stand-ins for a font that cannot be redistributed — Carlito for
    * Calibri, Arimo for Arial. Set only when the font is missing and nothing
@@ -62,10 +69,14 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
     matchedFamily = r.matchedFamily
   }
 
-  // Substitutes are a fallback, not a first answer: if the real font can be
-  // downloaded, hand over the real font. They also cover the case where a
-  // family is in the catalogue but has no usable static files.
-  const needsFallback = state === 'missing' && !google?.downloadable
+  // Source precedence, strongest first:
+  //   1. Google Fonts   — the real font, original unsubsetted repo files
+  //   2. Fontsource     — the real font, for families Google does not carry
+  //   3. a substitute   — a different font that stands in for it
+  // Only fall down a step when the one above has nothing to offer.
+  const fontsource = !google?.downloadable ? findFontsourceFamily(parsed) : null
+
+  const needsFallback = state === 'missing' && !google?.downloadable && !fontsource
   const substitutes = needsFallback ? findSubstitutes(parsed) : null
 
   return {
@@ -74,15 +85,57 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
     method: inventory.method,
     matchedFamily,
     google: google ?? undefined,
-    // A curated substitute is always better than token-overlap guesswork, so
-    // the fuzzy suggestions stand down when one exists.
-    suggestions: state === 'missing' && !google && !substitutes ? suggestGoogleFamilies(parsed) : [],
+    fontsource: fontsource ?? undefined,
+    // A real font or a curated substitute both beat token-overlap guesswork,
+    // so the fuzzy suggestions stand down when either exists.
+    suggestions:
+      state === 'missing' && !google && !fontsource && !substitutes ? suggestGoogleFamilies(parsed) : [],
     substitutes: substitutes ?? undefined,
   }
 }
 
 export function resolveAll(fonts: DeckFont[], inventory: FontInventory): ResolvedFont[] {
   return fonts.map((f) => resolveFont(f, inventory))
+}
+
+/** Where a real copy of this font can be fetched from, if anywhere. */
+export interface DownloadPlan {
+  family: string
+  source: 'google' | 'fontsource'
+  license: string
+}
+
+/**
+ * The one place that decides which catalogue supplies a font.
+ *
+ * Callers should not branch on `r.google` / `r.fontsource` themselves — the
+ * precedence rule lives here so the row button, the bulk install and the
+ * bundle builder cannot drift apart.
+ *
+ * Substitutes are deliberately NOT part of this: they are a different typeface,
+ * not a copy of what was asked for, and every caller treats them differently.
+ */
+export function downloadPlan(r: ResolvedFont): DownloadPlan | null {
+  if (r.google?.downloadable) {
+    return { family: r.google.family, source: 'google', license: r.google.license }
+  }
+  if (r.fontsource) {
+    return { family: r.fontsource.family, source: 'fontsource', license: r.fontsource.license }
+  }
+  return null
+}
+
+/** Fetch faces for a plan, from whichever catalogue it names. */
+export function fetchPlanFaces(
+  plan: DownloadPlan,
+  weight: number,
+  italic: boolean,
+  signal?: AbortSignal,
+): Promise<FetchedFace[]> {
+  const opts = { italics: italic, signal }
+  return plan.source === 'google'
+    ? fetchGoogleFaces(plan.family, [weight], opts)
+    : fetchFontsourceFaces(plan.family, [weight], opts)
 }
 
 export interface ResolveSummary {
@@ -121,7 +174,7 @@ export function summarize(resolved: ResolvedFont[]): ResolveSummary {
     else if (r.state === 'embedded') s.embedded++
     else {
       s.missing++
-      if (r.google?.downloadable) s.fixable++
+      if (r.google?.downloadable || r.fontsource) s.fixable++
       else if (r.substitutes) {
         s.substitutable++
         if (r.substitutes.hasMetric) s.metricSubstitutable++

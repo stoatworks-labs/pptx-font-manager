@@ -378,3 +378,58 @@ Substitutes are deliberately **excluded from the bulk "install missing fonts"
 action**. A substitute is a different typeface, and swapping one in without the
 user choosing it is not a call this app gets to make silently. They get their
 own per-row button, and their own manifest section that leads the file.
+
+---
+
+## 10. Fontsource: a second source, and the same subsetting trap
+
+`src/core/fontsource.ts` adds the **119 open families Google Fonts does not
+carry** — Adwaita, Aileron, Chunk Five, Bluu Next and similar.
+
+### Its docs are wrong about TTFs, in the way that matters
+
+Fontsource states that its `.ttf` files bundle every subset into one file.
+**They do not.** Measured against the live CDN:
+
+```
+inter@latest/latin-400-normal.ttf   200, 66,912 bytes   <- latin only
+inter@latest/400-normal.ttf         404
+inter@latest/full-400-normal.ttf    404
+```
+
+Every file is `{subset}-{weight}-{style}.ttf`. This is the same unicode-range
+subsetting that makes the Google CSS API useless here (§6), and a subsetted
+font in a bundle is worse than nothing — it installs cleanly, then renders
+blanks outside its subset.
+
+**What makes it safe anyway:** a family declaring exactly *one* subset has
+nothing to lose. Its single `latin` file *is* the whole font. The build script
+keeps only single-subset families, so if Fontsource ever adds a multi-subset
+non-Google family it is dropped rather than silently shipped broken.
+
+### Three more things the build script does
+
+- **Drops anything Google already has.** Fetching Google families from
+  Fontsource would mean fetching a subsetted republish instead of the original.
+- **Drops names that collapse onto a Google family.** `Syne Italic` is a real
+  Fontsource entry, but `parseFontName` reduces it to `Syne`, which Google has —
+  so the entry could never win the precedence check. Dead by construction is
+  worse than absent.
+- **Drops non-redistributable licences,** though at present everything is
+  OFL/Apache/CC0/MIT/Unlicense.
+
+### Precedence lives in exactly one place
+
+`downloadPlan()` in `src/lib/resolve.ts` decides which catalogue supplies a
+font: Google, then Fontsource, then nothing. Callers must not branch on
+`r.google` / `r.fontsource` themselves — the row button, the bulk install and
+the bundle builder all go through it so they cannot drift apart. Substitutes
+(§9) sit below both and are handled separately, because they are a different
+typeface rather than a copy of what was asked for.
+
+### CSP
+
+`public/_headers` must list **`cdn.jsdelivr.net`** in `connect-src` alongside
+`raw.githubusercontent.com`. Verified under the real production headers via
+`npm run serve:dist`, with `fonts.googleapis.com` as a negative control to
+confirm the policy is actually being enforced rather than merely permissive.

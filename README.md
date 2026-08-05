@@ -54,8 +54,9 @@ inherited from a layout or theme, or only present somewhere incidental.
 has it, and text-width measurement everywhere else. The fallback was checked
 against CoreText on macOS across nine fonts and agreed on all nine.
 
-**Finds replacements** on Google Fonts — 1,942 families, matched after the name
-is normalised, with near-matches offered when there is no exact one (a missing
+**Finds replacements** across two catalogues — 1,942 Google Fonts families plus
+119 more from Fontsource that Google does not carry — matched after the name is
+normalised, with near-matches offered when there is no exact one (a missing
 `Garamond` suggests EB Garamond and Cormorant Garamond).
 
 **Substitutes what cannot be shared.** The fonts most often missing are the

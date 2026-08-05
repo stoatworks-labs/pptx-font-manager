@@ -22,7 +22,7 @@ Network-dependent tests are opt-in — they hit the real google/fonts repo:
 NETWORK_TESTS=1 npm test
 ```
 
-## Regenerating the Google Fonts catalogue
+## Regenerating the font catalogues
 
 ```bash
 node scripts/build-catalogue.mjs
@@ -31,6 +31,14 @@ node scripts/build-catalogue.mjs
 Reads `fonts.google.com/metadata/fonts` and the `google/fonts` repo tree, writes
 `src/data/google-fonts.json`. Re-run occasionally. The app works with a stale
 catalogue, it just will not know about newly added families.
+
+```bash
+node scripts/build-fontsource-catalogue.mjs
+```
+
+Writes `src/data/fontsource-fonts.json` — the families Fontsource has and
+Google does not. **Run it after the Google one**, since it reads
+`google-fonts.json` to work out what to leave out.
 
 ## Deploy
 
@@ -52,6 +60,13 @@ deploy `npx wrangler deploy`.
   it inflates a 2-font deck to 39.
 - **Do not switch font downloads to the Google CSS API.** It cannot return an
   installable file. See AGENTS.md §6.
-- **`public/_headers` CSP must allow `raw.githubusercontent.com`** in
-  `connect-src`, or downloads fail in production only.
+- **Do not take Fontsource's word that its TTFs carry every subset.** They are
+  subsetted per unicode-range, same as the CSS API. Only single-subset families
+  are safe, and the build script enforces that. See AGENTS.md §10.
+- **`public/_headers` CSP must allow `raw.githubusercontent.com` AND
+  `cdn.jsdelivr.net`** in `connect-src`, or downloads fail in production only.
+- **Decide download sources through `downloadPlan()`**, never by branching on
+  `r.google` / `r.fontsource` at the call site.
+- **Keep metric-compatible substitutes distinct from merely similar ones.**
+  See AGENTS.md §9 — one preserves the deck's line breaks, the other does not.
 - Test fixtures are private decks and stay gitignored.

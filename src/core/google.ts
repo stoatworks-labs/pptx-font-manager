@@ -1,6 +1,6 @@
 import catalogue from '../data/google-fonts.json'
 import { normalizeKey, type ParsedFontName } from './names'
-import type { GoogleMatch } from './types'
+import type { FetchedFace, GoogleMatch } from './types'
 
 /**
  * Matching deck fonts against Google Fonts, and fetching the files.
@@ -169,17 +169,7 @@ function pickFiles(files: string[], wantWeight: number, wantItalic: boolean): Re
   return uprights.length > 0 ? [uprights[0]!] : described.slice(0, 1)
 }
 
-export interface FetchedFace {
-  filename: string
-  data: Uint8Array
-  family: string
-  weight: number
-  italic: boolean
-  /** SPDX id, from the licence directory the file lives in. */
-  license: string
-  /** True when the file is a variable font covering multiple weights. */
-  variable: boolean
-}
+export type { FetchedFace } from './types'
 
 /**
  * Download installable .ttf files for a Google family.

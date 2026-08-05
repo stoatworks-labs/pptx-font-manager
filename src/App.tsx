@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scanPptx } from './core/scan'
 import { fetchGoogleFaces, CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
+import { FONTSOURCE_COUNT } from './core/fontsource'
 import { buildBundle, bundleFilename, localLicenseNote, type BundleEntry } from './core/bundle'
-import { resolveAll, summarize, type ResolvedFont } from './lib/resolve'
+import {
+  downloadPlan,
+  fetchPlanFaces,
+  resolveAll,
+  summarize,
+  type ResolvedFont,
+} from './lib/resolve'
 import {
   bestInventory,
   hasLocalFontAccess,
@@ -104,7 +111,7 @@ export default function App() {
   )
   const hiddenCount = resolved.length - visible.length
   const installable = useMemo(
-    () => resolved.filter((r) => r.state === 'missing' && r.google?.downloadable),
+    () => resolved.filter((r) => r.state === 'missing' && downloadPlan(r)),
     [resolved],
   )
 
@@ -131,11 +138,10 @@ export default function App() {
       const files: Array<{ filename: string; data: Uint8Array }> = []
       try {
         for (const r of targets) {
-          if (!r.google?.downloadable) continue
-          setBusy(`Downloading ${r.google.family}…`)
-          const faces = await fetchGoogleFaces(r.google.family, [r.font.weight], {
-            italics: r.font.italic,
-          })
+          const plan = downloadPlan(r)
+          if (!plan) continue
+          setBusy(`Downloading ${plan.family}…`)
+          const faces = await fetchPlanFaces(plan, r.font.weight, r.font.italic)
           for (const f of faces) files.push({ filename: f.filename, data: f.data })
         }
         if (files.length === 0) {
@@ -158,13 +164,12 @@ export default function App() {
 
   /** Browser: download the font files for the user to install themselves. */
   const getOne = useCallback(async (r: ResolvedFont) => {
-    if (!r.google?.downloadable) return
-    setBusy(`Downloading ${r.google.family}…`)
+    const plan = downloadPlan(r)
+    if (!plan) return
+    setBusy(`Downloading ${plan.family}…`)
     setError(null)
     try {
-      const faces = await fetchGoogleFaces(r.google.family, [r.font.weight], {
-        italics: r.font.italic,
-      })
+      const faces = await fetchPlanFaces(plan, r.font.weight, r.font.italic)
       for (const f of faces) download(f.data, f.filename)
     } catch (e) {
       setError((e as Error).message)
@@ -240,21 +245,21 @@ export default function App() {
           continue
         }
 
-        if (r.google?.downloadable) {
-          setBusy(`Fetching ${r.google.family}…`)
+        const plan = downloadPlan(r)
+        if (plan) {
+          setBusy(`Fetching ${plan.family}…`)
           try {
-            const faces = await fetchGoogleFaces(r.google.family, [font.weight], {
-              italics: font.italic,
-            })
+            const faces = await fetchPlanFaces(plan, font.weight, font.italic)
+            const label = plan.source === 'google' ? 'Google Fonts' : 'Fontsource'
             for (const f of faces) {
               entries.push({
                 filename: f.filename,
                 data: f.data,
                 family: f.family,
-                source: 'google',
+                source: plan.source,
                 license: f.license,
                 redistributable: true,
-                provenance: `Google Fonts (${f.license})${f.variable ? ', variable font' : ''}`,
+                provenance: `${label} (${f.license})${f.variable ? ', variable font' : ''}`,
               })
             }
             continue
@@ -566,7 +571,8 @@ export default function App() {
       <footer>
         {scan ? `${scan.slideCount} slide${scan.slideCount === 1 ? '' : 's'} scanned · ` : ''}
         {desktop ? 'Desktop · ' : ''}
-        Google Fonts catalogue: {CATALOGUE_COUNT} families, {CATALOGUE_DATE} · {__APP_VERSION__}
+        Catalogues: {CATALOGUE_COUNT} Google Fonts families ({CATALOGUE_DATE}) + {FONTSOURCE_COUNT}{' '}
+        more from Fontsource · {__APP_VERSION__}
       </footer>
     </>
   )
@@ -642,11 +648,18 @@ function FontRow({
         : `Google Fonts has ${r.google.family} (${r.google.license})`,
     )
   }
+  if (r.fontsource) {
+    detail.push(
+      r.fontsource.exact
+        ? `on Fontsource (${r.fontsource.license})`
+        : `Fontsource has ${r.fontsource.family} (${r.fontsource.license})`,
+    )
+  }
   if (r.suggestions.length > 0) {
     detail.push(`similar on Google Fonts: ${r.suggestions.map((s) => s.family).join(', ')}`)
   }
 
-  const canFetch = r.google?.downloadable
+  const canFetch = !!downloadPlan(r)
   const wants = r.state === 'missing' || r.state === 'family-installed'
 
   // A stand-in for something that cannot legally travel in the bundle.
