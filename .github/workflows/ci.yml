@@ -1,0 +1,41 @@
+name: ci
+
+# Until this existed the repo had no workflows at all, so no pull request ever
+# got a status check: Dependabot bumps arrived with nothing to gate a merge on
+# and accumulated.
+#
+# The web half is checked properly. The Rust half under /src-tauri is a
+# configured Dependabot ecosystem but is NOT checked here, because `cargo
+# clippy -D warnings` already fails on main (a `match` that clippy wants as
+# `matches!`) and `cargo fmt --check` fails too. Fix those and add a `tauri`
+# job — LEQtion's ci.yml has the shape, including the webkit2gtk headers a
+# Tauri crate needs before it will even check on Linux.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Deliberately a plain `npm ci` — no --legacy-peer-deps. A bump that only
+      # installs by ignoring the peer graph is exactly what this is here to catch.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # `build` is `tsc -b && vite build`, so this is the typecheck as well —
+      # there is no separate typecheck script to run.
+      - name: Build
+        run: npm run build
