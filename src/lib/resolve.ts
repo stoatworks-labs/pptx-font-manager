@@ -1,4 +1,4 @@
-import { parseFontName, resolveInstalled } from '../core/names'
+import { normalizeKey, parseFontName, resolveInstalled } from '../core/names'
 import { findGoogleFamily, suggestGoogleFamilies, fetchGoogleFaces } from '../core/google'
 import { findFontsourceFamily, fetchFontsourceFaces, type FontsourceMatch } from '../core/fontsource'
 import { findAdobeFamily, type AdobeMatch } from '../core/adobe'
@@ -24,12 +24,43 @@ export interface ResolvedFont extends FontStatus {
    */
   adobe?: AdobeMatch
   /**
+   * This font is installed *because Creative Cloud syncs it here* — its file
+   * lives in Adobe's CoreSync store, not with the system fonts.
+   *
+   * The most dangerous state a deck font can be in: it renders perfectly for
+   * the author and is absent at the venue, which has neither the file nor
+   * necessarily a subscription. It is also the only evidence strong enough to
+   * flag an *installed* Adobe font, since a catalogue hit alone would condemn
+   * Times New Roman.
+   *
+   * `false` means "not known to be synced", not "proven local" — only the
+   * desktop build can see file paths at all. It gates a warning, so the safe
+   * default is silence.
+   */
+  installedViaAdobeSync: boolean
+  /**
    * Curated stand-ins for a font that cannot be redistributed — Carlito for
    * Calibri, Arimo for Arial. Set only when the font is missing and nothing
    * downloadable matches it directly, because an actual copy of the font the
    * deck asked for always beats a substitute.
    */
   substitutes?: SubstituteMatch
+}
+
+/**
+ * Is this family one Creative Cloud syncs onto this machine?
+ *
+ * Compared through `normalizeKey` for the same reason the installed-check is:
+ * the inventory reports the OS's spelling of the family name, which is not
+ * always the deck's.
+ */
+function syncedHere(inventory: FontInventory, family: string | undefined): boolean {
+  if (!family || !inventory.adobeSynced?.size) return false
+  const key = normalizeKey(family)
+  for (const f of inventory.adobeSynced) {
+    if (normalizeKey(f) === key) return true
+  }
+  return false
 }
 
 /**
@@ -50,6 +81,7 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
       state: 'embedded',
       method: inventory.method,
       google: google ?? undefined,
+      installedViaAdobeSync: false,
       suggestions: [],
     }
   }
@@ -89,32 +121,40 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
   const substitutes = needsFallback ? findSubstitutes(parsed) : null
 
   /*
-   * Adobe recognition, but ONLY for a font that is actually missing.
+   * Is this font on this machine only because Creative Cloud put it there?
    *
-   * Two conditions, and the second is not obvious.
+   * Answerable on the desktop build alone, where the shell reports font file
+   * paths — a synced face lives in Adobe's CoreSync store rather than the font
+   * directory. `syncedHere` is false everywhere else, including the web build.
+   */
+  const installedViaAdobeSync =
+    state !== 'missing' && syncedHere(inventory, matchedFamily ?? parsed.family)
+
+  /*
+   * Adobe recognition, for a font that is missing OR proven to be synced here.
    *
-   * If Google or Fontsource has the family — Source Sans and friends are on
-   * Google Fonts under OFL — pointing at a Creative Cloud subscription would be
-   * actively unhelpful.
+   * The second half of that is the subtle one. **Adobe Fonts resells the
+   * Microsoft system fonts** — Monotype lists Calibri, Times New Roman, Courier
+   * New, Segoe UI and Wingdings there, all genuine catalogue entries. So a
+   * catalogue hit on an *installed* font proves nothing, and flagging on one
+   * told users Times New Roman "cannot travel with the deck and will break
+   * elsewhere": nonsense for a font that ships with both Windows and macOS, and
+   * exactly the false alarm §2.2 exists to prevent.
    *
-   * The `missing` requirement is there because **Adobe Fonts resells the
-   * Microsoft system fonts**. Monotype lists Calibri, Times New Roman, Courier
-   * New, Segoe UI and Wingdings there, all genuine catalogue entries. Applying
-   * the note to an installed font therefore tells someone that Times New Roman
-   * "cannot travel with the deck and will break elsewhere" — true of an Adobe
-   * exclusive, nonsense for a font that ships with both Windows and macOS. That
-   * is precisely the false alarm §2.2 exists to prevent.
+   * What licences the warning is the file path, not the name. Times New Roman
+   * is never inside CoreSync; a Proxima Nova the author activated is only ever
+   * inside it. That recovers the case that matters most — the deck that works
+   * perfectly for its author and breaks at the venue — without touching the
+   * system fonts, because they cannot satisfy the condition.
    *
-   * The cost is real: we lose the warning for the case that matters most, a
-   * genuinely Adobe-only face like Proxima Nova that is synced here and absent
-   * at the venue. Recovering it means telling a CoreSync-synced font from an
-   * OS-bundled one, which needs the desktop app to expose font file paths — the
-   * font would sit under
-   * `~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r/`.
-   * Until that exists, staying quiet beats crying wolf.
+   * Still silent when Google or Fontsource has the family: Source Sans and
+   * friends are on Google Fonts under OFL, and pointing at a Creative Cloud
+   * subscription for a font anyone can download would be actively unhelpful.
    */
   const adobe =
-    state === 'missing' && !google?.downloadable && !fontsource ? findAdobeFamily(parsed) : null
+    (state === 'missing' || installedViaAdobeSync) && !google?.downloadable && !fontsource
+      ? findAdobeFamily(parsed)
+      : null
 
   return {
     font,
@@ -124,6 +164,7 @@ export function resolveFont(font: DeckFont, inventory: FontInventory): ResolvedF
     google: google ?? undefined,
     fontsource: fontsource ?? undefined,
     adobe: adobe ?? undefined,
+    installedViaAdobeSync,
     // A real font or a curated substitute both beat token-overlap guesswork,
     // so the fuzzy suggestions stand down when either exists.
     suggestions:

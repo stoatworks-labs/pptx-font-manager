@@ -27,4 +27,14 @@ fn main() {
     }
     println!();
     println!("faces found: {:?}", inv.faces);
+
+    // File paths for the wanted families. The frontend reads these to tell a
+    // Creative Cloud-synced face from an OS-bundled one; printing them is how
+    // you check by eye that the paths arriving there are real. Anything under
+    // .../Adobe/CoreSync/plugins/livetype/ is synced.
+    println!();
+    println!("files ({}):", inv.family_files.len());
+    for f in &inv.family_files {
+        println!("  {:<28} {}", f.family, f.path);
+    }
 }

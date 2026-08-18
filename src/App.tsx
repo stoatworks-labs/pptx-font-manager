@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scanPptx } from './core/scan'
 import { fetchGoogleFaces, CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
 import { FONTSOURCE_COUNT } from './core/fontsource'
-import { adobeBundleNote } from './core/adobe'
+import { adobeBundleNote, adobeSyncBundleNote } from './core/adobe'
 import { buildBundle, bundleFilename, localLicenseNote, type BundleEntry } from './core/bundle'
 import {
   downloadPlan,
@@ -22,6 +22,7 @@ import { defaultInventory } from './platform/fontcheck'
 import {
   fontInstallDir,
   installFonts,
+  isAdobeSyncFile,
   listInstalledFontFiles,
   readInstalledFontFile,
   type InstallReport,
@@ -270,6 +271,22 @@ export default function App() {
           }
         }
 
+        // A Creative Cloud-synced font is on this machine and may not leave
+        // it. This has to come BEFORE the read-it-off-this-machine branch
+        // below, which would otherwise happily copy the CoreSync file into the
+        // zip — the exact transfer Adobe's licence forbids, and the one thing
+        // the row is at that moment warning the user about.
+        //
+        // Keyed on the file path, not on `r.adobe`: the path is proof, while
+        // the catalogue is knowingly incomplete and may not know the name.
+        if (r.installedViaAdobeSync) {
+          unavailable.push({
+            name: font.name,
+            reason: r.adobe ? adobeBundleNote(r.adobe) : adobeSyncBundleNote(font.family),
+          })
+          continue
+        }
+
         // Read it off this machine. Desktop does this without a prompt;
         // the browser needs Local Font Access to have been granted.
         const family = r.matchedFamily ?? font.family
@@ -281,6 +298,12 @@ export default function App() {
             const list = await listInstalledFontFiles(family)
             let added = 0
             for (let i = 0; i < list.length; i++) {
+              // A family can hold both an OS file and a Creative Cloud-synced
+              // one — Adobe Fonts resells the Microsoft system fonts, so a
+              // subscriber can end up with two Times New Romans. The family is
+              // safe to bundle, but *that file* is not: copying it to another
+              // machine is the transfer Adobe's licence forbids.
+              if (isAdobeSyncFile(list[i]!)) continue
               const data = await readInstalledFontFile(family, i)
               entries.push({
                 filename: list[i]!.filename,
@@ -686,16 +709,31 @@ function FontRow({
           {detail.length > 0 && ' · '}
           {detail.join(' · ')}
         </div>
-        {r.adobe && (
+        {(r.adobe || r.installedViaAdobeSync) && (
           <div className="sub sub-adobe">
-            <strong>{r.adobe.family}</strong> is an Adobe Font
-            {r.adobe.foundry ? ` (${r.adobe.foundry})` : ''}, so it cannot travel with the
-            deck — Adobe’s licence does not permit putting the file in a bundle.{' '}
-            Anyone with a Creative Cloud subscription can activate it.{' '}
-            <a href={r.adobe.url} target="_blank" rel="noreferrer noopener">
-              Activate on Adobe Fonts
-            </a>
-            {r.adobe.hasOpenSourceCut && ' · an open-source cut of this family also exists'}
+            <strong>{r.adobe?.family ?? font.family}</strong> is an Adobe Font
+            {r.adobe?.foundry ? ` (${r.adobe.foundry})` : ''}
+            {/*
+              Two quite different situations share this block. A missing Adobe
+              font is a gap the user can see. A synced one shows as installed
+              and is the more dangerous of the two — nothing on screen would
+              otherwise suggest the deck is about to break somewhere else.
+            */}
+            {r.installedViaAdobeSync
+              ? ' — Creative Cloud syncs it onto this machine, which is why it shows as ' +
+                'installed. A machine without the subscription will not have it, and Adobe’s ' +
+                'licence does not permit putting the file in a bundle.'
+              : ', so it cannot travel with the deck — Adobe’s licence does not permit ' +
+                'putting the file in a bundle.'}{' '}
+            {r.adobe && (
+              <>
+                Anyone with a Creative Cloud subscription can activate it.{' '}
+                <a href={r.adobe.url} target="_blank" rel="noreferrer noopener">
+                  Activate on Adobe Fonts
+                </a>
+                {r.adobe.hasOpenSourceCut && ' · an open-source cut of this family also exists'}
+              </>
+            )}
           </div>
         )}
         {sub && best && (

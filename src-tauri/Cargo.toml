@@ -36,6 +36,12 @@ dirs = "6"
 # Version tracks font-kit's own core-foundation so only one copy is linked.
 core-foundation = "0.10"
 
+# font-kit's CoreText source hands back `Handle::Memory` for every macOS face —
+# it never reports where the file is. Font *locations* are what distinguish a
+# Creative Cloud-synced face from an OS-bundled one, so CoreText is asked
+# directly for the descriptor URL. Version tracks font-kit's own core-text.
+core-text = "20.1"
+
 [target.'cfg(windows)'.dependencies]
 # Installing a font on Windows needs a registry value as well as a file copy —
 # see fonts.rs. Without it the font lands on disk and never appears in any

@@ -8,7 +8,7 @@ Command reference. For the model, the invariants and the traps, read
 ```bash
 npm install
 npm run dev          # vite dev server
-npm test             # vitest — 43 tests, offline
+npm test             # vitest — 125 tests, offline (5 network-gated, see below)
 npm run test:watch
 npm run build        # tsc -b && vite build -> dist/
 npm run preview      # serve the built dist/ (does NOT apply _headers)
@@ -71,6 +71,9 @@ deploy `npx wrangler deploy`.
   exists and the licence forbids it. See AGENTS.md §11.
 - **A miss in the Adobe catalogue means "unknown", not "not an Adobe font".**
   The public feed cannot be fully enumerated — 5,017 of 5,369.
+- **Flag an INSTALLED Adobe font only on `installedViaAdobeSync`**, never on a
+  catalogue hit — Adobe resells the Microsoft system fonts, so the name proves
+  nothing and the CoreSync file path proves everything. See AGENTS.md §11.
 - **Keep metric-compatible substitutes distinct from merely similar ones.**
   See AGENTS.md §9 — one preserves the deck's line breaks, the other does not.
 - Test fixtures are private decks and stay gitignored.

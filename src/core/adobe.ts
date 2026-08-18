@@ -89,6 +89,26 @@ export function findAdobeFamily(parsed: ParsedFontName): AdobeMatch | null {
  * reads like a bug; "the licence does not permit putting it in this zip, here
  * is where to activate it" is actionable.
  */
+/**
+ * The bundle README line for a font proven synced by *where its file is*.
+ *
+ * Separate from `adobeBundleNote` because the evidence is different and so is
+ * what can be said. A CoreSync path is proof the file may not travel even when
+ * the catalogue has never heard of the family — and the catalogue is knowingly
+ * incomplete, so that case is not rare. There is no family page to link to,
+ * so this does not invent one.
+ */
+export function adobeSyncBundleNote(family: string): string {
+  return (
+    `${family} is activated on this machine through Adobe Creative Cloud — its ` +
+    `font file lives in the CoreSync store rather than with the system fonts. ` +
+    `That is why it looks installed here: a machine without the subscription ` +
+    `will not have it. Adobe's licence does not permit copying the file into ` +
+    `this zip, so activate it in Creative Cloud on the other machine, or pick a ` +
+    `typeface that can travel.`
+  )
+}
+
 export function adobeBundleNote(match: AdobeMatch): string {
   return (
     `${match.family} is an Adobe Font. Its licence does not permit including the ` +

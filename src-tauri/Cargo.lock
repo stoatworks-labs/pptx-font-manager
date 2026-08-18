@@ -2645,6 +2645,7 @@ name = "pptx-font-manager"
 version = "0.1.0"
 dependencies = [
  "core-foundation 0.10.1",
+ "core-text",
  "dirs",
  "font-kit",
  "serde",

@@ -78,6 +78,13 @@ files in any case. So for a missing one the app names the reason and links
 straight to the family page, where anyone with a Creative Cloud subscription can
 activate it.
 
+The desktop app also catches the version of this that looks fine: a font
+Creative Cloud syncs onto your machine is installed here and nowhere else, so
+the deck renders perfectly for you and breaks at the venue. It is told apart
+from an ordinary installed font by where its file lives — Adobe keeps synced
+faces in its own CoreSync folder — which is why *Times New Roman* does not get
+the warning merely for being sold on Adobe Fonts too.
+
 **Reports embedded fonts** — fonts that travel inside the deck and need no
 installation at all. Where the format allows, it extracts them as real
 installable files (see below).

@@ -9,6 +9,17 @@ import { parseFontName } from '../src/core/names'
 
 const look = (n: string) => findAdobeFamily(parseFontName(n))
 
+/** A plain, unembedded deck font, as the scanner would report it. */
+const deckFont = (name: string) => ({
+  name,
+  family: name,
+  weight: 400,
+  italic: false,
+  tier: 'slide' as const,
+  origins: [],
+  count: 1,
+})
+
 describe('the Adobe catalogue', () => {
   it('holds a useful share of the library', () => {
     expect(ADOBE_COUNT).toBeGreaterThan(2000)
@@ -69,44 +80,134 @@ describe('Adobe Fonts resells the Microsoft system fonts', () => {
 
   it('so an installed system font must not be flagged — see resolveFont', async () => {
     const { resolveFont } = await import('../src/lib/resolve')
-    const font = {
-      name: 'Times New Roman',
-      family: 'Times New Roman',
-      weight: 400,
-      italic: false,
-      tier: 'slide' as const,
-      origins: [],
-      count: 1,
-    }
     const installed = {
       families: new Set(['Times New Roman']),
       faces: new Set<string>(),
       method: 'local-font-access' as const,
     }
-    const r = resolveFont(font, installed as never)
+    const r = resolveFont(deckFont('Times New Roman'), installed as never)
     expect(r.state).toBe('installed')
+    expect(r.adobe).toBeUndefined()
+  })
+
+  /**
+   * The reason the flag keys on a file path and not on the catalogue: an
+   * installed Adobe-only font is invisible without one. On the web build, and
+   * on any desktop shell that reports no paths, this stays silent rather than
+   * guessing — the alternative is the Times New Roman false alarm above.
+   */
+  it('and an installed font with no path information stays silent too', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    const r = resolveFont(deckFont('Proxima Nova'), {
+      families: new Set(['Proxima Nova']),
+      faces: new Set<string>(),
+      method: 'local-font-access' as const,
+    } as never)
+    expect(r.state).toBe('installed')
+    expect(r.installedViaAdobeSync).toBe(false)
     expect(r.adobe).toBeUndefined()
   })
 
   it('but a missing one still gets its activation link', async () => {
     const { resolveFont } = await import('../src/lib/resolve')
-    const font = {
-      name: 'Proxima Nova',
-      family: 'Proxima Nova',
-      weight: 400,
-      italic: false,
-      tier: 'slide' as const,
-      origins: [],
-      count: 1,
-    }
     const empty = {
       families: new Set<string>(),
       faces: new Set<string>(),
       method: 'local-font-access' as const,
     }
-    const r = resolveFont(font, empty as never)
+    const r = resolveFont(deckFont('Proxima Nova'), empty as never)
     expect(r.state).toBe('missing')
     expect(r.adobe?.family).toBe('Proxima Nova')
+  })
+})
+
+/**
+ * The warning §11 had to drop, and how it comes back.
+ *
+ * The dangerous deck is not the one with a missing font — the author can see
+ * that. It is the one whose fonts are all present *because Creative Cloud syncs
+ * them here*, which renders perfectly on the authoring machine and breaks at
+ * the venue. The desktop shell now reports font file paths, so a face living in
+ * Adobe's CoreSync store can be told from one the OS ships, and that — not a
+ * catalogue hit — is what licences the warning.
+ *
+ * NOT VERIFIED against a real synced font: the CoreSync `.r` directory on the
+ * machine this was written on is empty, because nothing is activated in
+ * Creative Cloud. These tests drive `resolveFont` with an inventory of the
+ * shape `nativeInventory` builds. Confirming the whole path end to end needs a
+ * font activated in Creative Cloud and a rescan on the desktop build.
+ */
+describe('a Creative Cloud-synced font, which is installed AND cannot travel', () => {
+  const nativeInventory = (families: string[], synced: string[]) =>
+    ({
+      families: new Set(families),
+      faces: new Set<string>(),
+      method: 'native' as const,
+      adobeSynced: new Set(synced),
+    }) as never
+
+  it('is flagged even though it is installed', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    const r = resolveFont(
+      deckFont('Proxima Nova'),
+      nativeInventory(['Proxima Nova'], ['Proxima Nova']),
+    )
+    expect(r.state).toBe('installed')
+    expect(r.installedViaAdobeSync).toBe(true)
+    expect(r.adobe?.family).toBe('Proxima Nova')
+  })
+
+  it('is flagged when the deck asked for a weight, not just the family', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    const r = resolveFont(
+      deckFont('Proxima Nova Bold'),
+      nativeInventory(['Proxima Nova'], ['Proxima Nova']),
+    )
+    // family-installed, not installed — and just as absent at the venue.
+    expect(r.state).toBe('family-installed')
+    expect(r.installedViaAdobeSync).toBe(true)
+    expect(r.adobe?.family).toBe('Proxima Nova')
+  })
+
+  it('matches the family through the OS spelling, not by string equality', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    const r = resolveFont(deckFont('Proxima-Nova'), nativeInventory(['Proxima Nova'], ['Proxima Nova']))
+    expect(r.installedViaAdobeSync).toBe(true)
+  })
+
+  it('leaves every other installed font alone', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    // Times New Roman is in the Adobe catalogue and installed here, but its
+    // file is not in the sync store — so nothing is said about it.
+    const r = resolveFont(
+      deckFont('Times New Roman'),
+      nativeInventory(['Times New Roman', 'Proxima Nova'], ['Proxima Nova']),
+    )
+    expect(r.installedViaAdobeSync).toBe(false)
+    expect(r.adobe).toBeUndefined()
+  })
+
+  it('says nothing when the family is free to download anyway', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    // Plenty of Adobe Fonts families are also on Google Fonts under OFL —
+    // Source Code Pro, Alegreya, and 1,200-odd others. Sending the user to a
+    // subscription for a font the bundle can simply include would be actively
+    // unhelpful, so the Adobe note stands down even here.
+    const r = resolveFont(
+      deckFont('Source Code Pro'),
+      nativeInventory(['Source Code Pro'], ['Source Code Pro']),
+    )
+    expect(r.installedViaAdobeSync).toBe(true)
+    expect(r.google?.downloadable).toBe(true)
+    expect(r.adobe).toBeUndefined()
+  })
+
+  it('an embedded font is never flagged — it travels inside the deck', async () => {
+    const { resolveFont } = await import('../src/lib/resolve')
+    const font = { ...deckFont('Proxima Nova'), embedded: { extracted: [] } }
+    const r = resolveFont(font as never, nativeInventory(['Proxima Nova'], ['Proxima Nova']))
+    expect(r.state).toBe('embedded')
+    expect(r.installedViaAdobeSync).toBe(false)
   })
 })
 

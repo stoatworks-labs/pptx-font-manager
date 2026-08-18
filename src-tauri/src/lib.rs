@@ -31,6 +31,13 @@ fn install_fonts(files: Vec<FontFile>) -> Result<InstallReport, String> {
 struct LocalFontFile {
     filename: String,
     size: usize,
+    /// Absolute path, or `None` for a face with no file of its own.
+    ///
+    /// The frontend needs this to decide whether the file may be copied at
+    /// all: a face Creative Cloud syncs lives under CoreSync rather than in
+    /// the font directory, and its licence does not permit handing it to
+    /// another machine. See `src/platform/adobe-sync.ts`.
+    path: Option<String>,
 }
 
 /// List the files backing an installed family, without transferring them.
@@ -42,9 +49,10 @@ struct LocalFontFile {
 fn list_installed_font_files(family: String) -> Result<Vec<LocalFontFile>, String> {
     Ok(fonts::read_installed_font(&family)?
         .into_iter()
-        .map(|(filename, data)| LocalFontFile {
-            filename,
-            size: data.len(),
+        .map(|f| LocalFontFile {
+            filename: f.filename,
+            size: f.data.len(),
+            path: f.path,
         })
         .collect())
 }
@@ -53,11 +61,11 @@ fn list_installed_font_files(family: String) -> Result<Vec<LocalFontFile>, Strin
 #[tauri::command]
 fn read_installed_font_file(family: String, index: usize) -> Result<tauri::ipc::Response, String> {
     let files = fonts::read_installed_font(&family)?;
-    let (_, data) = files
+    let file = files
         .into_iter()
         .nth(index)
         .ok_or_else(|| format!("No file at index {index} for {family}."))?;
-    Ok(tauri::ipc::Response::new(data))
+    Ok(tauri::ipc::Response::new(file.data))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

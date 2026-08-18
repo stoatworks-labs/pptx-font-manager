@@ -41,6 +41,16 @@ export interface FontInventory {
   faces: Set<string>
   /** Present only with the Local Font Access API. */
   records?: LocalFontRecord[]
+  /**
+   * Families whose files live in the Creative Cloud CoreSync store rather than
+   * with the system fonts — installed here, and absent anywhere without a
+   * subscription. See `./adobe-sync.ts`.
+   *
+   * Desktop only: enumerating this needs font file paths, and no browser API
+   * exposes one. Absent means "not known", never "none" — it only ever gates a
+   * warning, so the browser build simply stays quiet.
+   */
+  adobeSynced?: Set<string>
   /** Set when enumeration is impossible and callers must probe by name. */
   probe?: (name: string) => boolean
 }

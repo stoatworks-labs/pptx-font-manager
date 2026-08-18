@@ -548,14 +548,57 @@ Creative Cloud registers with the OS like any other. Run against a real deck, it
 told the user that *Times New Roman* "cannot travel with the deck and will break
 elsewhere". That is the §2.2 false alarm in a new costume.
 
-The lost warning is a real cost, and recovering it needs something this codebase
-does not have yet: the ability to tell a **CoreSync-synced** font from an
-OS-bundled one. On macOS a synced face lives under
-`~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r/` with an
-obfuscated filename, so the desktop app could prove it by exposing font file
-paths — `LocalFontFile` currently carries only `filename` and `size`. Until
-then, silence beats crying wolf, and there is a test pinning both halves:
-Times New Roman installed gets no flag, Proxima Nova missing still does.
+### Recovering the warning: the file path, not the name
+
+The name cannot carry that warning. The **location of the file** can, and the
+desktop build now reports it. A face Creative Cloud syncs is not in the font
+directory at all:
+
+    macOS    ~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r/
+    Windows  %APPDATA%\Adobe\CoreSync\plugins\livetype\r\
+
+with an obfuscated, extensionless filename. Times New Roman is never in there;
+an activated Proxima Nova is only in there. So `resolveFont` flags an
+**installed** Adobe font when, and only when, `installedViaAdobeSync` is true —
+proven by a path — and the system fonts cannot satisfy that condition however
+many times Monotype lists them.
+
+Three parts, and each one has a trap in it:
+
+1. **font-kit will not give you the path on macOS.** Its CoreText source hands
+   back `Handle::Memory` for *every* installed face — verified against Arial,
+   Gill Sans and Helvetica Neue, 69 faces, no paths at all. So `fonts.rs` asks
+   CoreText itself (`CTFontDescriptor` → URL, via the `core-text` crate) for
+   family locations. Windows and Linux need none of this: DirectWrite and
+   fontconfig both build `Handle::Path` already.
+2. **The store is also read directly**, in `adobe_sync_store()`. It does not
+   depend on the OS font API naming a location, and the family name comes out
+   of each file's own name table because the filenames are deliberately
+   meaningless. Cost scales with how many fonts the user has activated; an
+   empty store is one `read_dir`.
+3. **A family with a synced file AND an ordinary one is not a risk.** Adobe
+   resells the system fonts, so a subscriber can hold two Times New Romans. The
+   family is only reported as synced when *no* non-synced file backs it —
+   otherwise the false alarm walks straight back in. Bundling is filtered
+   separately, per file, because the synced file may not travel even when its
+   family is safe.
+
+`src/platform/adobe-sync.ts` owns the rule for what a synced path looks like,
+and matches the four-directory chain `Adobe/CoreSync/plugins/livetype` rather
+than a `$HOME`-based prefix — the leaf differs by platform (`.r` vs `r`), both
+filesystems are case-insensitive, and a relocated home would defeat a literal
+prefix. The Rust side locates the store and reports paths; it does not classify
+them. Keep those two in step.
+
+**The positive case has never been observed on a real machine.** The `.r`
+directory on the development Mac exists and is empty — nothing is activated in
+Creative Cloud — so every test of a synced font drives hand-written paths of the
+documented shape. Confirming it end to end needs a font activated in Creative
+Cloud, then a rescan on the desktop build. The tests say so in their own
+comments; do not quietly upgrade them to "verified".
+
+Both halves of the original trap are still pinned by tests: Times New Roman
+installed gets no flag, Proxima Nova missing still does.
 
 ### The catalogue may only ever assert POSITIVES
 

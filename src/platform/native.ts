@@ -18,6 +18,7 @@ import type { FontInventory } from './fontcheck'
  */
 
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { adobeSyncedFamilies, isAdobeSyncPath } from './adobe-sync'
 
 /**
  * True when running inside the Tauri shell rather than a browser tab.
@@ -35,6 +36,13 @@ export function isDesktop(): boolean {
 interface InventoryDto {
   families: string[]
   faces: string[]
+  /**
+   * Where the wanted families' files are, plus everything in the Creative
+   * Cloud sync store — that store is read directly, because the macOS font
+   * API will not say where any face lives. Optional on the wire: a frontend
+   * running against an older shell binary simply learns nothing.
+   */
+  familyFiles?: Array<{ family: string; path: string }>
 }
 
 /**
@@ -43,7 +51,11 @@ interface InventoryDto {
  * `wanted` is passed through because face names are resolved lazily on the
  * Rust side — loading the name table of all 11,000-odd installed fonts to
  * answer a question about five of them takes seconds. Families come back in
- * full; faces only for the families the deck actually mentions.
+ * full; faces and file paths only for the families the deck actually mentions.
+ *
+ * The paths are here for one purpose: a font Creative Cloud syncs is installed
+ * on this machine and nowhere else, and the only thing that distinguishes it
+ * from an OS-bundled font is where its file sits. See `./adobe-sync.ts`.
  */
 export async function nativeInventory(wanted: string[]): Promise<FontInventory> {
   const dto = await invoke<InventoryDto>('font_inventory', { wanted })
@@ -51,6 +63,7 @@ export async function nativeInventory(wanted: string[]): Promise<FontInventory> 
     method: 'native',
     families: new Set(dto.families),
     faces: new Set(dto.faces),
+    adobeSynced: adobeSyncedFamilies(dto.familyFiles ?? []),
   }
 }
 
@@ -94,10 +107,24 @@ export async function installFonts(
 export interface LocalFontFile {
   filename: string
   size: number
+  /**
+   * Absolute path on disk, or null for a face with no file of its own.
+   *
+   * Not decoration: it is what says whether this file may be copied into a
+   * bundle at all. A face under the Creative Cloud CoreSync store looks like
+   * any other installed font and may not travel — `isAdobeSyncFile` is the
+   * check, not the filename.
+   */
+  path: string | null
 }
 
 export function listInstalledFontFiles(family: string): Promise<LocalFontFile[]> {
   return invoke<LocalFontFile[]>('list_installed_font_files', { family })
+}
+
+/** True when this file is one Creative Cloud syncs, so it cannot be shared. */
+export function isAdobeSyncFile(file: LocalFontFile): boolean {
+  return isAdobeSyncPath(file.path)
 }
 
 /**

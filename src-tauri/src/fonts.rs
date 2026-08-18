@@ -43,6 +43,22 @@ fn norm(s: &str) -> String {
     out.trim().to_string()
 }
 
+/// Where one installed face's file actually lives.
+///
+/// Reported so the frontend can tell an OS-bundled font from one Creative
+/// Cloud syncs into its own directory. That distinction is the whole reason
+/// this exists: an Adobe-synced face registers with the OS like any other, so
+/// "installed" on the authoring machine says nothing about the venue. The rule
+/// that reads these paths lives in `src/platform/adobe-sync.ts` — this side
+/// reports the fact and does not interpret it, so there is only ever one
+/// definition of what a synced path looks like.
+#[derive(Serialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub struct FamilyFile {
+    pub family: String,
+    pub path: String,
+}
+
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Inventory {
@@ -50,6 +66,14 @@ pub struct Inventory {
     pub families: Vec<String>,
     /// Full and PostScript names, for the families relevant to the request.
     pub faces: Vec<String>,
+    /// Where those families' files are — plus everything Creative Cloud has
+    /// synced onto this machine, asked about or not.
+    ///
+    /// Scoped to the request for the same reason faces are: this machine has
+    /// 11,630 font files and the deck asked about five of them. The sync store
+    /// is included whole because it is small and because it is the one place
+    /// whose contents are interesting regardless of what the deck says.
+    pub family_files: Vec<FamilyFile>,
 }
 
 /// Load a handle and collect its face names, ignoring anything unreadable.
@@ -57,13 +81,140 @@ pub struct Inventory {
 /// A handful of system fonts fail to load — datafork suitcases, fonts the
 /// process has no read permission for. One bad face must not take out the
 /// whole inventory, so failures are dropped silently.
-fn push_face_names(handle: &Handle, into: &mut BTreeSet<String>) {
-    if let Ok(font) = handle.load() {
-        into.insert(font.full_name());
-        if let Some(ps) = font.postscript_name() {
-            into.insert(ps);
+///
+/// Returns the family name read from the file, for the one caller that has a
+/// handle without knowing which family produced it.
+fn push_face_names(handle: &Handle, into: &mut BTreeSet<String>) -> Option<String> {
+    let font = handle.load().ok()?;
+    into.insert(font.full_name());
+    if let Some(ps) = font.postscript_name() {
+        into.insert(ps);
+    }
+    Some(font.family_name())
+}
+
+/// The file a handle points at, when it points at one.
+///
+/// `Handle::Memory` faces have no path — font-kit materialised the bytes — so
+/// they are simply absent rather than reported with a made-up location.
+fn handle_path(handle: &Handle) -> Option<String> {
+    match handle {
+        Handle::Path { path, .. } => Some(path.display().to_string()),
+        Handle::Memory { .. } => None,
+    }
+}
+
+/// Where a family's files actually live.
+///
+/// **font-kit cannot answer this on macOS.** Its CoreText source returns
+/// `Handle::Memory` for every installed face — measured here, all 69 faces of
+/// Arial, Gill Sans and Helvetica Neue — so `handle_path` finds nothing and the
+/// synced-font check would silently never fire. CoreText itself does know: the
+/// font descriptor carries a URL, which is how Creative Cloud registers its
+/// faces in the first place.
+#[cfg(target_os = "macos")]
+fn family_file_paths(family: &str) -> Vec<PathBuf> {
+    let Some(collection) = core_text::font_collection::create_for_family(family) else {
+        return Vec::new();
+    };
+    let Some(descriptors) = collection.get_descriptors() else {
+        return Vec::new();
+    };
+
+    let mut out: Vec<PathBuf> = Vec::new();
+    for descriptor in descriptors.iter() {
+        if let Some(path) = descriptor.font_path() {
+            // Faces of one family routinely share a .ttc, so the same file
+            // comes back many times over.
+            if !out.contains(&path) {
+                out.push(path);
+            }
         }
     }
+    out
+}
+
+/// Not needed off macOS: font-kit's DirectWrite and fontconfig sources both
+/// build `Handle::Path`, so the paths already arrive with the handles.
+#[cfg(not(target_os = "macos"))]
+fn family_file_paths(_family: &str) -> Vec<PathBuf> {
+    Vec::new()
+}
+
+/// The directories Creative Cloud syncs desktop faces into.
+///
+///     macOS    ~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r
+///     Windows  %APPDATA%\Adobe\CoreSync\plugins\livetype\r
+///
+/// Both leaf spellings are tried on both platforms. The dot is the documented
+/// difference between them, and it is not worth a wrong answer if Adobe ever
+/// swaps one for the other.
+///
+/// This is the one place in the Rust side that knows what the sync store is.
+/// It *locates* the store; deciding whether a given path is inside one is the
+/// frontend's rule, in `src/platform/adobe-sync.ts`. Keep the two in step.
+fn adobe_sync_dirs() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join("Library").join("Application Support"));
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(appdata) = dirs::config_dir() {
+        // dirs::config_dir() is %APPDATA% (Roaming) on Windows.
+        roots.push(appdata);
+    }
+
+    let mut dirs_out = Vec::new();
+    for root in roots {
+        let livetype = root
+            .join("Adobe")
+            .join("CoreSync")
+            .join("plugins")
+            .join("livetype");
+        for leaf in [".r", "r"] {
+            let dir = livetype.join(leaf);
+            if dir.is_dir() {
+                dirs_out.push(dir);
+            }
+        }
+    }
+    dirs_out
+}
+
+/// Every font Creative Cloud has synced onto this machine, by family.
+///
+/// Read straight from the store rather than inferred from the OS font list,
+/// for two reasons. The filenames in there are deliberately obfuscated —
+/// `2ZQVDGB`, no extension — so the family name has to come out of the file's
+/// own name table. And this keeps working on a platform whose font API declines
+/// to say where a face lives, which is exactly what macOS does.
+///
+/// Cost is proportional to how many fonts the user has activated, not to how
+/// many are installed: an empty store costs one `read_dir`.
+fn adobe_sync_store() -> Vec<FamilyFile> {
+    use font_kit::font::Font;
+
+    let mut out = Vec::new();
+    for dir in adobe_sync_dirs() {
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            // Anything that is not a font — .DS_Store, Adobe's own bookkeeping
+            // files — simply fails to parse and is skipped.
+            if let Ok(font) = Font::from_path(&path, 0) {
+                out.push(FamilyFile {
+                    family: font.family_name(),
+                    path: path.display().to_string(),
+                });
+            }
+        }
+    }
+    out
 }
 
 /// Build an inventory.
@@ -71,7 +222,8 @@ fn push_face_names(handle: &Handle, into: &mut BTreeSet<String>) {
 /// Family enumeration is cheap and returned in full. Face names are **not** —
 /// loading all 11k fonts to read their name tables takes seconds. So faces are
 /// resolved only for the families the caller actually asked about, which is a
-/// handful per deck.
+/// handful per deck. File paths follow the same rule, and cost about the same:
+/// measured at 199 ms for 2,232 families and 69 faces, unchanged by adding them.
 ///
 /// `wanted` is the raw font names from the deck, e.g. `Helvetica Neue Medium`.
 pub fn inventory(wanted: &[String]) -> Result<Inventory, String> {
@@ -82,13 +234,28 @@ pub fn inventory(wanted: &[String]) -> Result<Inventory, String> {
 
     let normalized: Vec<(String, &String)> = families.iter().map(|f| (norm(f), f)).collect();
     let mut faces: BTreeSet<String> = BTreeSet::new();
+    let mut family_files: BTreeSet<FamilyFile> = BTreeSet::new();
+    // Families the request actually reached, so their files can be located
+    // afterwards in one pass rather than per matching rule.
+    let mut matched: BTreeSet<String> = BTreeSet::new();
 
     for want in wanted {
         let want_key = norm(want);
 
         // A PostScript name is an exact, indexed lookup — try it first.
         if let Ok(handle) = source.select_by_postscript_name(want) {
-            push_face_names(&handle, &mut faces);
+            // This branch carries the Adobe case on its own. A synced face is
+            // often written into a deck by its PostScript name
+            // (`ProximaNova-Regular`), which no family-prefix match reaches.
+            if let Some(family) = push_face_names(&handle, &mut faces) {
+                if let Some(path) = handle_path(&handle) {
+                    family_files.insert(FamilyFile {
+                        family: family.clone(),
+                        path,
+                    });
+                }
+                matched.insert(family);
+            }
         }
 
         // Then any family whose name is a prefix of what was asked for, which
@@ -102,15 +269,43 @@ pub fn inventory(wanted: &[String]) -> Result<Inventory, String> {
             }
             if let Ok(fam) = source.select_family_by_name(family) {
                 for handle in fam.fonts() {
-                    push_face_names(handle, &mut faces);
+                    let _ = push_face_names(handle, &mut faces);
+                    if let Some(path) = handle_path(handle) {
+                        // The enumerated family name, not the one inside the
+                        // file: this is the string the frontend matched
+                        // against, so it is the string it can look up.
+                        family_files.insert(FamilyFile {
+                            family: (*family).clone(),
+                            path,
+                        });
+                    }
                 }
+                matched.insert((*family).clone());
             }
         }
+    }
+
+    // Where those families live, for the platforms whose handles do not say.
+    for family in &matched {
+        for path in family_file_paths(family) {
+            family_files.insert(FamilyFile {
+                family: family.clone(),
+                path: path.display().to_string(),
+            });
+        }
+    }
+
+    // And what Creative Cloud has synced here, whether or not the deck asked
+    // for it. This is the half that does not depend on the OS font API
+    // reporting a location at all — it reads the store itself.
+    for file in adobe_sync_store() {
+        family_files.insert(file);
     }
 
     Ok(Inventory {
         families,
         faces: faces.into_iter().collect(),
+        family_files: family_files.into_iter().collect(),
     })
 }
 
@@ -509,17 +704,56 @@ fn post_install_note(report: &InstallReport) -> Option<String> {
     )
 }
 
+/// One file backing an installed family.
+pub struct InstalledFont {
+    pub filename: String,
+    /// Absolute path on disk. `None` for a face font-kit materialised in
+    /// memory, which has no single file to name.
+    ///
+    /// Carried through to the frontend because where a font file lives is
+    /// evidence about where it came from — a face under the Creative Cloud
+    /// CoreSync directory is one the licence forbids putting in a bundle,
+    /// however ordinary it looks in the font menu.
+    pub path: Option<String>,
+    pub data: Vec<u8>,
+}
+
 /// Read an installed font's file, so it can go into a bundle.
 ///
-/// Returns the bytes and the path. Only reads files that font-kit reported as
-/// installed — the frontend cannot ask for an arbitrary path.
-pub fn read_installed_font(family: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+/// Returns the bytes and the path. Only reads files the platform itself
+/// reported for this family — the frontend cannot ask for an arbitrary path.
+///
+/// The path matters as much as the bytes here: a face Creative Cloud syncs may
+/// not be copied to another machine, and it is indistinguishable from an
+/// ordinary installed font by any other means. So the platform's own locations
+/// are used where they exist, and the font-kit handles are the fallback for
+/// faces it will not place — on macOS that fallback also loses the real
+/// filename, since a `Handle::Memory` face has none.
+pub fn read_installed_font(family: &str) -> Result<Vec<InstalledFont>, String> {
+    let mut out = Vec::new();
+    for path in family_file_paths(family) {
+        let filename = path
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_else(|| format!("{family}.ttf"));
+        if let Ok(data) = fs::read(&path) {
+            out.push(InstalledFont {
+                filename,
+                path: Some(path.display().to_string()),
+                data,
+            });
+        }
+    }
+    if !out.is_empty() {
+        return Ok(out);
+    }
+
     let source = SystemSource::new();
     let fam = source
         .select_family_by_name(family)
         .map_err(|e| format!("{family} is not installed: {e}"))?;
 
-    let mut out = Vec::new();
+    // `out` is still empty here — the early return above covered the other case.
     for handle in fam.fonts() {
         match handle {
             Handle::Path { path, .. } => {
@@ -528,11 +762,19 @@ pub fn read_installed_font(family: &str) -> Result<Vec<(String, Vec<u8>)>, Strin
                     .map(|f| f.to_string_lossy().to_string())
                     .unwrap_or_else(|| format!("{family}.ttf"));
                 if let Ok(data) = fs::read(path) {
-                    out.push((name, data));
+                    out.push(InstalledFont {
+                        filename: name,
+                        path: Some(path.display().to_string()),
+                        data,
+                    });
                 }
             }
             Handle::Memory { bytes, .. } => {
-                out.push((format!("{family}.ttf"), bytes.as_ref().clone()));
+                out.push(InstalledFont {
+                    filename: format!("{family}.ttf"),
+                    path: None,
+                    data: bytes.as_ref().clone(),
+                });
             }
         }
     }
@@ -585,6 +827,37 @@ mod tests {
         assert!(safe_filename("Poppins-Regular").is_err());
     }
 
+    /// The store is *located*, never guessed at: a directory that is not there
+    /// is simply not returned, so an empty result means "nothing synced" and
+    /// never "look somewhere plausible".
+    ///
+    /// On the machine this was written on the macOS store exists and is empty —
+    /// nothing is activated in Creative Cloud — so this asserts the shape of
+    /// the path rather than that anything was found. A positive result needs a
+    /// font activated in Creative Cloud first.
+    #[test]
+    fn sync_dirs_are_real_directories_under_the_documented_path() {
+        for dir in adobe_sync_dirs() {
+            assert!(dir.is_dir(), "{dir:?} was returned but does not exist");
+            let path = dir.to_string_lossy().to_lowercase();
+            assert!(
+                path.contains("adobe") && path.contains("coresync") && path.contains("livetype"),
+                "{dir:?} is not the CoreSync store",
+            );
+        }
+    }
+
+    /// Whatever is in the store, every entry must carry a family name read from
+    /// the file and the path it came from — the frontend matches on the first
+    /// and classifies on the second.
+    #[test]
+    fn sync_store_entries_are_named_and_located() {
+        for file in adobe_sync_store() {
+            assert!(!file.family.trim().is_empty(), "a synced file with no family name");
+            assert!(Path::new(&file.path).is_file(), "{} is not a file", file.path);
+        }
+    }
+
     #[test]
     fn install_dir_is_under_the_home_directory() {
         let dir = install_dir().expect("an install dir on this platform");
@@ -592,3 +865,4 @@ mod tests {
         assert!(dir.starts_with(&home), "{dir:?} should be under {home:?}");
     }
 }
+
