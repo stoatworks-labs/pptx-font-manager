@@ -8,6 +8,12 @@
       name="description"
       content="Scan a PowerPoint deck for the fonts it actually uses, check which are installed, and build a sidecar font bundle."
     />
+      <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS ignores the manifest's icons and wants a PNG of its own. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Tints the status bar when installed. Two, so it follows the theme. -->
+    <meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16161a" media="(prefers-color-scheme: dark)" />
   </head>
   <body>
     <div id="root"></div>
