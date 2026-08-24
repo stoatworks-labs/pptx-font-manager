@@ -619,3 +619,10 @@ closer, but completeness is not achievable from the public endpoint.
 `definitelyNotAdobe` helper — the data cannot support one. The catalogue records
 `libraryTotal` alongside `count` so the gap is visible in the data itself, and a
 test asserts `count < libraryTotal` so the incompleteness cannot be forgotten.
+
+## Notes
+
+`docs/NOTES.md` carries this repo's working notes — current status, decisions
+already made, and the traps that have actually bitten. Read it before changing
+anything non-obvious. Cross-cutting fleet knowledge lives in
+[fleet-notes](https://github.com/stoatworks-labs/fleet-notes).
