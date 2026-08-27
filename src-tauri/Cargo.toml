@@ -40,7 +40,7 @@ core-foundation = "0.10"
 # it never reports where the file is. Font *locations* are what distinguish a
 # Creative Cloud-synced face from an OS-bundled one, so CoreText is asked
 # directly for the descriptor URL. Version tracks font-kit's own core-text.
-core-text = "20.1"
+core-text = "22.0"
 
 [target.'cfg(windows)'.dependencies]
 # Installing a font on Windows needs a registry value as well as a file copy —
