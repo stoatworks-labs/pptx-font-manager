@@ -31,6 +31,8 @@ jobs:
       # installs by ignoring the peer graph is exactly what this is here to catch.
       - name: Install dependencies
         run: npm ci
+      - name: Lockfile matches manifest
+        run: npm ls --all >/dev/null
 
       - name: Test
         run: npm test
@@ -39,3 +41,9 @@ jobs:
       # there is no separate typecheck script to run.
       - name: Build
         run: npm run build
+      # Loads the built site in a real browser: a React major mismatch builds green
+      # and throws on first render (RFutils #22, three weeks of an empty page).
+      - name: Smoke-check the built site
+        uses: stoatworks-labs/smoke-check@v1
+        with:
+          dir: dist
