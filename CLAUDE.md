@@ -44,12 +44,24 @@ Google does not. **Run it after the Google one**, since it reads
 
 Static-assets Worker, not Cloudflare Pages.
 
+**Automatic.** `.github/workflows/deploy.yml` tests, builds, smoke-checks and
+deploys on every push to `main` that touches something a visitor sees, then
+verifies the live `<head>` hash matches the build. Doc-only pushes are skipped.
+
+Needs `CLOUDFLARE_API_TOKEN` (repo secret) and `CLOUDFLARE_ACCOUNT_ID` (repo
+variable). The workflow fails in one second with instructions if the token is
+missing, rather than after a build.
+
+Manual fallback, for when Actions is down:
+
 ```bash
 cf-run npx wrangler deploy
 ```
 
-Or connect the repo in the Cloudflare dashboard: build `npm ci && npm run build`,
-deploy `npx wrangler deploy`.
+**Do not connect a Cloudflare dashboard build.** None was ever connected — the
+comment that used to be in `wrangler.toml` describing one was aspirational, and
+it cost twelve commits sitting undeployed for sixteen days. Two things deploying
+the same Worker is worse than one.
 
 ## Ground rules
 

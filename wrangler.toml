@@ -9,9 +9,16 @@
 # missing build step and is really the wrong config key. Same shape as
 # aspect-calc, blend-calc and pixel-peeker.
 #
-# Build command in the Cloudflare project:
+# Deploys are automatic: .github/workflows/deploy.yml runs `wrangler deploy` on
+# every push to main that touches something a visitor sees. `cf-run npx wrangler
+# deploy` still works from a laptop and is the fallback when Actions is down.
 #
-#   npm ci && npm run build
+# There is NO Cloudflare-side build connected to this repo, and there never was.
+# An earlier version of this comment gave a "build command in the Cloudflare
+# project", which read as though the dashboard was wired up; it was not, and
+# between 2026-08-22 and 2026-09-07 twelve commits sat on main without ever
+# reaching the edge. Do not reintroduce a Cloudflare build here — two things
+# deploying the same Worker is worse than one.
 #
 # `public/_headers` is copied into dist/ by Vite and carries the CSP and the
 # immutable-cache rule for hashed assets; the assets runtime honours it. Note the

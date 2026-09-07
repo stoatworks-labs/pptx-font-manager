@@ -1,0 +1,144 @@
+# Build the site and put it in front of visitors.
+#
+# Until this existed, pptx-font-manager shipped only when somebody remembered to run
+# `cf-run npx wrangler deploy` from a laptop, and by 2026-09-07 that had not happened
+# since 2026-08-22: twelve commits sat on main and none of them were at the edge —
+# the React 18 -> 19 move, the installable/offline PWA work, four Dependabot groups
+# and the embedded-font subset detection. wrangler.toml's note about the build
+# happening at Cloudflare ("Build command in the Cloudflare project: npm ci && npm
+# run build") describes an intention that was never wired up: no Cloudflare build is
+# connected to this repo, so a push to main changed nothing that a visitor sees.
+#
+# Deliberately the same shape as negative-space's .github/workflows/deploy.yml, so
+# the two read alike and a fix to one is obvious in the other. Two things differ,
+# both noted where they happen: the smoke-check step, and the node version.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # Prose changes nothing a visitor of this site sees. Note that paths-ignore only
+    # skips a push when EVERY changed file matches, so the usual commit that touches
+    # both source and its AGENTS.md note still deploys.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/dependabot.yml"
+  workflow_dispatch:
+
+# Newest push wins. Cancelling an in-flight build is safe: wrangler uploads the
+# assets first and activates the version as one step at the end, so a run killed
+# part way through never becomes the live version. With cancel-in-progress false,
+# two quick pushes could deploy in the wrong order and leave the older tree live.
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # node-version rather than negative-space's node-version-file: this repo has
+      # no .nvmrc, and 22 is what ci.yml already builds and tests against. If one
+      # moves, move the other.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # Fail in a second rather than after a build. A deploy that cannot
+      # authenticate is the whole point of this job failing to happen.
+      - name: Check the Cloudflare token is present
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set on this repository, so the"
+            echo "::error::site cannot be deployed. Create a Cloudflare API token with"
+            echo "::error::the 'Edit Cloudflare Workers' template scoped to this account,"
+            echo "::error::then:"
+            echo "::error::  gh secret set CLOUDFLARE_API_TOKEN --repo stoatworks-labs/pptx-font-manager"
+            echo "::error::cf-run already uses such a token from the login keychain under"
+            echo "::error::the service name 'stoatworks-cloudflare'; the same one works here."
+            exit 1
+          fi
+          echo "token present - ok"
+
+      # Deliberately a plain `npm ci` — no --legacy-peer-deps, same as ci.yml. A
+      # bump that only installs by ignoring the peer graph must not reach the edge.
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
+
+      # Not in negative-space's copy, which gates on its test suite alone. This repo
+      # has the action and the failure it catches is precisely the one that must
+      # never be deployed: a React major mismatch builds green and renders an empty
+      # page (RFutils #22, three weeks of it). The scanner tests all pass in node and
+      # would not notice.
+      - name: Smoke-check the built site
+        uses: stoatworks-labs/smoke-check@v1
+        with:
+          dir: dist
+
+      # wrangler is not a dependency of this project — locally it comes from npx via
+      # `npm run deploy`, which is why the version is pinned here rather than left to
+      # resolve to latest. An unpinned npx would let a wrangler major change how
+      # deploys behave on a morning nobody touched this repo. Dependabot's
+      # github-actions ecosystem only bumps `uses:` refs, not this, so bump it
+      # deliberately — and in step with the rest of the fleet.
+      - name: Deploy to Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          # wrangler's first-run metrics consent prompt would hang a non-interactive
+          # run for ever. cf-run sets this locally for the same reason.
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --yes wrangler@4.116.0 deploy
+
+      # Prove it actually landed, against the domain a visitor uses.
+      #
+      # "It deployed" and "the page changed" are different claims, and the obvious
+      # ways to check the second are both wrong here:
+      #
+      #   * The whole served body cannot be compared against dist/index.html.
+      #     Cloudflare injects a bot-management script before </body> carrying a
+      #     per-request nonce, so no two responses are byte-identical and the check
+      #     would fail every time, on a healthy deploy.
+      #   * The hashed asset filename alone is not enough either. It only moves when
+      #     the JS or CSS moves, so a change to the <head> — a title, a description,
+      #     the PWA manifest link — would sail through against a stale build.
+      #
+      # The <head> is untouched by the injection, and Vite writes the hashed JS and
+      # CSS filenames into it alongside the meta tags. Hashing it therefore catches a
+      # code change and a meta-only change alike, and is stable across requests.
+      - name: Check the live site is serving this build
+        run: |
+          set -euo pipefail
+          want=$(sed -n '1,/<\/head>/p' dist/index.html | shasum -a 256 | cut -d' ' -f1)
+          echo "expecting the live <head> to hash to $want"
+          for attempt in 1 2 3 4 5; do
+            got=$(curl -sS --max-time 30 "https://pptx-font-manager.stoatworks-labs.com/" \
+                  | sed -n '1,/<\/head>/p' | shasum -a 256 | cut -d' ' -f1 || true)
+            if [ "$got" = "$want" ]; then
+              echo "live site is serving this build (attempt $attempt)"
+              exit 0
+            fi
+            echo "not there yet, got $got — retrying in 10s (attempt $attempt)"
+            sleep 10
+          done
+          echo "::error::Deployed, but https://pptx-font-manager.stoatworks-labs.com/"
+          echo "::error::is still not serving this build's <head>. The upload succeeded,"
+          echo "::error::so this is the edge serving something else — check the Worker's"
+          echo "::error::routes, and that pptx-font-manager is what the custom domain"
+          echo "::error::actually points at."
+          exit 1
