@@ -214,6 +214,36 @@ node scripts/make-test-deck.mjs
 See [CLAUDE.md](CLAUDE.md) for the full command reference and
 [AGENTS.md](AGENTS.md) for the design notes and traps.
 
+<!-- selfhost:start -->
+## Run your own copy
+
+PowerPoint Font Manager is a static page, so hosting it yourself is one container serving
+the built files — the same files the hosted copy serves, running somewhere that
+still works when the venue has no internet.
+
+**Docker.** The image is built by this repo's `docker.yml` workflow on every
+push and published as `ghcr.io/stoatworks-labs/pptx-font-manager`:
+
+```bash
+docker run -d --name pptx-font-manager --restart unless-stopped -p 8538:80 ghcr.io/stoatworks-labs/pptx-font-manager:latest
+```
+
+Or `docker compose up -d` with the [`docker-compose.yml`](docker-compose.yml)
+in this repo, which maps the same port. Either way it is then at
+`http://localhost:8538/`.
+
+**Unraid.** Search Community Applications for *PowerPoint Font Manager* — the template is
+[`templates/pptx-font-manager.xml`](https://github.com/stoatworks-labs/stoatworks-unraid/blob/main/templates/pptx-font-manager.xml)
+in [stoatworks-unraid](https://github.com/stoatworks-labs/stoatworks-unraid), which is what the CA feed reads.
+
+**Stoatworks Burrow** lists it under *Self-hosted*, with the compose file a
+click away.
+
+The `Dockerfile`, `docker-compose.yml`, `docker/` and the workflow are
+generated from `fleet.json` in stoatworks-unraid. Change them there and
+regenerate rather than editing them here.
+<!-- selfhost:end -->
+
 <!-- attributions:start -->
 This project is built on other people's work — see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 <!-- attributions:end -->
