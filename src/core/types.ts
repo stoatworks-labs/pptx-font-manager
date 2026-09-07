@@ -55,6 +55,77 @@ export interface DeckFont {
  * anywhere in the part, so it cannot be turned back into an installable file
  * without an MTX decompressor. We report these rather than extract them.
  */
+/**
+ * How the deck says its fonts were embedded, from `<p:presentation>`.
+ *
+ * This is PowerPoint's own "Embed fonts in the file" choice:
+ *
+ *   full    embedTrueTypeFonts, saveSubsetFonts off — "embed all characters
+ *           (best for editing by other people)". Someone without the font can
+ *           edit the text.
+ *   subset  saveSubsetFonts on — "embed only the characters used in the
+ *           presentation". Only the glyphs this deck needed travel, so
+ *           PowerPoint restricts editing of that text on a machine without
+ *           the font: view and print, no typing.
+ *   none    no embedding.
+ *
+ * It is a declaration by the producer, not a measurement. See `EmbedEvidence`.
+ */
+export type EmbedMode = 'full' | 'subset' | 'none'
+
+/**
+ * The OS/2 `fsType` embedding permission carried in the EOT header — what the
+ * *foundry* allows, which is a different question from how PowerPoint chose to
+ * embed.
+ *
+ * Worth keeping distinct because `preview-print` is the other thing anyone
+ * means by "read only", and it can disagree with the embed mode in both
+ * directions: a fully-embedded face may still be preview-and-print by licence.
+ */
+export type EmbedPermission =
+  /** 0x0000 — may be installed on the reader's machine. */
+  | 'installable'
+  /** 0x0002 — may not be embedded at all without a licence. */
+  | 'restricted'
+  /** 0x0004 — document may be viewed and printed, not edited. */
+  | 'preview-print'
+  /** 0x0008 — document may be edited. */
+  | 'editable'
+  /** Not recorded, or bits we do not recognise. */
+  | 'unknown'
+
+/** What a recovered face actually covers, measured from its `cmap`. */
+export interface FaceCoverage {
+  glyphs: number
+  codepoints: number
+  /** Of the 95 printable ASCII characters. Exact; see `sfnt.ts`. */
+  basicLatin: number
+  /** Zip part this was measured from. */
+  part: string
+}
+
+/**
+ * Whether the payload backs up the deck's own claim about subsetting.
+ *
+ * `fuller-than-claimed` is not a curiosity — it is the Canva case, and Canva
+ * is one of the two producers this tool sees most. That deck sets
+ * `saveSubsetFonts="1"` and then embeds a complete Latin face.
+ *
+ * `thinner-than-claimed` is the dangerous direction and the reason this field
+ * is not just a debug aid: the deck says every character is present, so
+ * PowerPoint allows editing, and the glyphs to render what gets typed are not
+ * actually there.
+ */
+export type EmbedEvidence =
+  /** Measured, and consistent with the declared mode. */
+  | 'confirmed'
+  /** Declared subset; the recovered face covers all printable ASCII anyway. */
+  | 'fuller-than-claimed'
+  /** Declared full; the recovered face is missing printable ASCII. */
+  | 'thinner-than-claimed'
+  /** MTX-compressed: the declaration is the only evidence there will ever be. */
+  | 'unverifiable'
+
 export interface EmbeddedFont {
   typeface: string
   /** Zip parts holding the face data, one per weight/style. */
@@ -63,6 +134,21 @@ export interface EmbeddedFont {
   compressed: boolean
   /** EOT `fsType` embedding-permission bits, if read. */
   fsType?: number
+  /** `fsType` decoded. What the foundry permits, not what PowerPoint did. */
+  permission: EmbedPermission
+  /** The deck-wide embed mode, copied here so a row can be read on its own. */
+  mode: EmbedMode
+  /**
+   * Can a recipient without this font installed edit text that uses it?
+   *
+   * Follows the declared mode, because that is what PowerPoint acts on — it
+   * restricts editing on the flag, whatever the glyphs turn out to be. Whether
+   * the text will *render* correctly is `coverage`, and the two can disagree.
+   */
+  editable: boolean
+  /** Measured from the recovered faces. Absent when nothing was recoverable. */
+  coverage?: FaceCoverage
+  evidence: EmbedEvidence
   /**
    * Faces successfully recovered as installable sfnt data. Populated for
    * uncompressed EOT (Canva, LibreOffice) and bare-sfnt payloads; empty for
@@ -77,6 +163,14 @@ export interface ExtractedFace {
   data: Uint8Array
   /** Source zip part. */
   part: string
+  /**
+   * What this face on its own covers.
+   *
+   * Held per face rather than only per family because the bundle writes one
+   * file per face, and warning on all four when only the bold one was cut down
+   * would train the reader to ignore the warning.
+   */
+  coverage?: FaceCoverage
 }
 
 export interface ScanWarning {
@@ -91,6 +185,11 @@ export interface ScanResult {
   /** Theme font schemes, keyed by theme part path. */
   themes: Record<string, { major: Partial<Record<ScriptSlot, string>>; minor: Partial<Record<ScriptSlot, string>> }>
   embedded: EmbeddedFont[]
+  /**
+   * Deck-wide embedding mode from `<p:presentation>`. `none` when the deck
+   * embeds nothing, which is the overwhelming majority of decks.
+   */
+  embedMode: EmbedMode
   /** Fonts named only in theme script-fallback lists. Reported for transparency, never treated as used. */
   ignoredFallbacks: string[]
   warnings: ScanWarning[]

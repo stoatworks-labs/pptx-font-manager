@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scanPptx } from './core/scan'
+import { BASIC_LATIN_TOTAL } from './core/sfnt'
 import { fetchGoogleFaces, CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
 import { FONTSOURCE_COUNT } from './core/fontsource'
 import { adobeBundleNote, adobeSyncBundleNote } from './core/adobe'
@@ -27,7 +28,7 @@ import {
   readInstalledFontFile,
   type InstallReport,
 } from './platform/native'
-import type { ScanResult } from './core/types'
+import type { EmbeddedFont, ScanResult } from './core/types'
 
 declare const __APP_VERSION__: string
 
@@ -232,6 +233,14 @@ export default function App() {
               license: 'Embedded in the presentation — terms unknown',
               redistributable: false,
               provenance: `extracted from ${face.part}`,
+              // Only when the face was measured AND came up short. An
+              // unmeasurable face must not be warned about as if it were
+              // known to be incomplete, and a complete one must not be
+              // warned about at all — see bundle.ts.
+              partialCoverage:
+                face.coverage && face.coverage.basicLatin < BASIC_LATIN_TOTAL
+                  ? { basicLatin: face.coverage.basicLatin, total: BASIC_LATIN_TOTAL }
+                  : undefined,
             })
           }
           continue
@@ -631,6 +640,84 @@ function InstallSummary({ report }: { report: InstallReport }) {
   )
 }
 
+/**
+ * What "embedded" actually gets you at the other end.
+ *
+ * Two separate facts, deliberately said in that order and never merged:
+ *
+ *   1. What the deck was saved as. This is what PowerPoint acts on — it
+ *      restricts editing on the `saveSubsetFonts` flag alone, whatever the
+ *      glyphs turn out to be.
+ *   2. What the bytes actually contain, where they could be read. This is what
+ *      decides whether the text *renders*.
+ *
+ * They disagree in both directions on real decks (see `scan.ts`), and the
+ * disagreement is the most useful thing on the row when it happens.
+ */
+function EmbedNote({ e }: { e: EmbeddedFont }) {
+  const cls =
+    e.evidence === 'thinner-than-claimed'
+      ? 'sub-embed-risk'
+      : e.editable
+        ? 'sub-embed-full'
+        : 'sub-embed-subset'
+
+  return (
+    <div className={`sub ${cls}`}>
+      {e.editable ? (
+        <>
+          <strong>Embedded with all characters.</strong> Anyone opening the deck can edit this
+          text without installing the font.
+        </>
+      ) : (
+        <>
+          <strong>Embedded as a subset.</strong> Only the characters this deck already uses
+          travel with it, so PowerPoint will not let someone without the font edit this text —
+          they can view and print it.
+        </>
+      )}{' '}
+      {e.evidence === 'fuller-than-claimed' && (
+        <>
+          The deck declares a subset, but the embedded face covers all {BASIC_LATIN_TOTAL}{' '}
+          printable ASCII characters — it will render text you add, even though PowerPoint
+          still blocks editing.
+        </>
+      )}
+      {e.evidence === 'thinner-than-claimed' && e.coverage && (
+        <>
+          But the face itself covers only {e.coverage.basicLatin} of {BASIC_LATIN_TOTAL}{' '}
+          printable ASCII characters. Editing is allowed and the glyphs are not there, so
+          anything typed beyond what the deck already contains will not render.
+        </>
+      )}
+      {e.evidence === 'confirmed' && !e.editable && e.coverage && (
+        <>
+          Checked against the file: {e.coverage.basicLatin} of {BASIC_LATIN_TOTAL} printable
+          ASCII characters present, {e.coverage.glyphs} glyphs in total.
+        </>
+      )}
+      {e.evidence === 'unverifiable' && (
+        <>
+          PowerPoint compresses its own embedded fonts, so this cannot be checked against the
+          file — the deck&rsquo;s own setting is the only evidence there is.
+        </>
+      )}
+      {(e.permission === 'preview-print' || e.permission === 'restricted') && (
+        <>
+          {' '}
+          Separately, the foundry&rsquo;s licence bits on the font say{' '}
+          <strong>
+            {e.permission === 'preview-print'
+              ? 'preview and print only'
+              : 'embedding is restricted'}
+          </strong>
+          .
+        </>
+      )}
+    </div>
+  )
+}
+
 function FontRow({
   r,
   desktop,
@@ -652,7 +739,11 @@ function FontRow({
     r.state === 'installed' ? (
       <span className="pill ok">Installed</span>
     ) : r.state === 'embedded' ? (
-      <span className="pill info">Embedded in deck</span>
+      // The distinction is the whole point of the row: both travel with the
+      // deck, only one of them can be edited at the other end.
+      <span className="pill info">
+        {font.embedded?.editable ? 'Embedded · editable' : 'Embedded · read-only'}
+      </span>
     ) : r.state === 'family-installed' ? (
       <span className="pill warn">Family only</span>
     ) : (
@@ -709,6 +800,7 @@ function FontRow({
           {detail.length > 0 && ' · '}
           {detail.join(' · ')}
         </div>
+        {font.embedded && <EmbedNote e={font.embedded} />}
         {(r.adobe || r.installedViaAdobeSync) && (
           <div className="sub sub-adobe">
             <strong>{r.adobe?.family ?? font.family}</strong> is an Adobe Font

@@ -1,17 +1,34 @@
 import { unzipSync, strFromU8 } from 'fflate'
 import { walkTags } from './xml'
 import { parseFontName, normalizeKey } from './names'
-import { parseEot, isBareSfnt, extractSfnt } from './eot'
+import { parseEot, isBareSfnt, extractSfnt, embedPermission } from './eot'
+import { readCoverage, BASIC_LATIN_TOTAL } from './sfnt'
 import type {
   DeckFont,
+  EmbedMode,
   EmbeddedFont,
   ExtractedFace,
+  FaceCoverage,
   FontOrigin,
   ScanResult,
   ScanWarning,
   ScriptSlot,
   UsageTier,
 } from './types'
+
+/**
+ * Read an OOXML `ST_OnOff` attribute.
+ *
+ * Not a courtesy: the two fixture decks disagree on spelling for the same
+ * attribute. Office writes `embedTrueTypeFonts="1"`, Canva writes
+ * `embedTrueTypeFonts="true"`. The schema permits `1`/`0`, `true`/`false` and
+ * the legacy `on`/`off`, so a `=== '1'` test silently loses every Canva deck.
+ */
+function onOff(value: string | undefined): boolean {
+  if (value === undefined) return false
+  const v = value.trim().toLowerCase()
+  return v === '1' || v === 'true' || v === 'on'
+}
 
 /**
  * Scan a .pptx/.potx/.ppsx for the fonts it actually uses.
@@ -302,13 +319,39 @@ export function scanPptx(file: Uint8Array): ScanResult {
   const embedded: EmbeddedFont[] = []
   const embeddedByName = new Map<string, EmbeddedFont>()
   const presXml = textOf(zip, 'ppt/presentation.xml')
+  /*
+   * PowerPoint's "Embed fonts in the file" choice, off the root element.
+   *
+   * `saveSubsetFonts` is the one that decides whether a recipient can edit:
+   * set means only the glyphs this deck used were written, and PowerPoint
+   * restricts editing of that text on a machine without the font.
+   *
+   * `embedTrueTypeFonts` is deliberately not read: it says embedding was
+   * switched on, while the presence of `<p:embeddedFontLst>` says it actually
+   * happened, and only the second one can be acted on.
+   */
+  let saveSubsetFonts = false
   if (presXml) {
     const presRels = relsFor(zip, 'ppt/presentation.xml')
     const relTarget = new Map(presRels.map((r) => [r.id, r.target]))
     let current: EmbeddedFont | null = null
     for (const tag of walkTags(presXml)) {
+      if (tag.local === 'presentation' && !tag.close) {
+        saveSubsetFonts = onOff(tag.attrs.saveSubsetFonts)
+        continue
+      }
       if (tag.local === 'embeddedFont' && !tag.close) {
-        current = { typeface: '', parts: [], compressed: false }
+        current = {
+          typeface: '',
+          parts: [],
+          compressed: false,
+          permission: 'unknown',
+          // The root element precedes the font list in document order, so the
+          // flags are always already read by the time we get here.
+          mode: saveSubsetFonts ? 'subset' : 'full',
+          editable: !saveSubsetFonts,
+          evidence: 'unverifiable',
+        }
         continue
       }
       if (tag.local === 'embeddedFont' && tag.close) {
@@ -336,6 +379,16 @@ export function scanPptx(file: Uint8Array): ScanResult {
   // an installable file where the format allows it.
   for (const ef of embedded) {
     const extracted: ExtractedFace[] = []
+    /*
+     * Coverage is measured per face and reduced to the weakest one.
+     *
+     * A family is embedded as four separate parts and there is nothing making
+     * them consistent — regular can carry the full character set while bold
+     * was cut down to the two words that happened to be bold. Reporting the
+     * best face, or the first, would hide exactly that. The weakest is the one
+     * that determines what actually breaks.
+     */
+    let weakest: FaceCoverage | undefined
     for (const part of ef.parts) {
       const data = zip[part]
       if (!data) continue
@@ -348,10 +401,39 @@ export function scanPptx(file: Uint8Array): ScanResult {
       }
       const sfnt = extractSfnt(data)
       if (sfnt) {
-        extracted.push({ filename: faceFilename(ef.typeface, part, sfnt), data: sfnt, part })
+        const measured = readCoverage(sfnt)
+        const coverage: FaceCoverage | undefined = measured ? { ...measured, part } : undefined
+        extracted.push({
+          filename: faceFilename(ef.typeface, part, sfnt),
+          data: sfnt,
+          part,
+          coverage,
+        })
+        if (coverage && (!weakest || coverage.basicLatin < weakest.basicLatin)) {
+          weakest = coverage
+        }
       }
     }
     if (extracted.length) ef.extracted = extracted
+    ef.permission = embedPermission(ef.fsType)
+    ef.coverage = weakest
+
+    /*
+     * Reconcile the deck's claim with the bytes.
+     *
+     * Both directions of disagreement are real and were found in the fixtures
+     * rather than reasoned about: Canva declares a subset and ships a complete
+     * Latin face. The opposite — declared full, measurably thin — is the one
+     * that hurts, because the flag is what PowerPoint uses to decide whether
+     * to allow editing at all.
+     */
+    if (!weakest) {
+      ef.evidence = 'unverifiable'
+    } else if (weakest.basicLatin >= BASIC_LATIN_TOTAL) {
+      ef.evidence = ef.mode === 'subset' ? 'fuller-than-claimed' : 'confirmed'
+    } else {
+      ef.evidence = ef.mode === 'full' ? 'thinner-than-claimed' : 'confirmed'
+    }
   }
 
   // ---- 4. Collect references from every content part ----
@@ -450,11 +532,17 @@ export function scanPptx(file: Uint8Array): ScanResult {
   const realNames = new Set([...found.keys()])
   const ignored = [...ignoredFallbacks].filter((n) => !realNames.has(normalizeKey(n))).sort()
 
+  // `saveSubsetFonts` can be set on a deck that embeds nothing at all — it is
+  // a saved preference, not a statement that anything happened. The font list
+  // is what decides whether there is a mode to report.
+  const embedMode: EmbedMode = embedded.length === 0 ? 'none' : saveSubsetFonts ? 'subset' : 'full'
+
   return {
     fonts,
     slideCount: slideParts.length,
     themes,
     embedded,
+    embedMode,
     ignoredFallbacks: ignored,
     warnings,
   }

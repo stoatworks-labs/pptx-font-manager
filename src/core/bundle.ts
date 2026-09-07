@@ -56,6 +56,24 @@ export interface BundleEntry {
     /** Same advance widths, so the deck's line breaks survive the swap. */
     metric: boolean
   }
+  /**
+   * Set when this file was extracted from the deck and does NOT cover the full
+   * printable ASCII set — a face subsetted to the characters the deck happened
+   * to use.
+   *
+   * This is the worst kind of bundle entry: it installs cleanly, renders the
+   * deck it came from perfectly, and then fails on the first character nobody
+   * had typed yet. Anyone who installs it has a font on their machine that is
+   * silently incomplete, under the real font's name.
+   *
+   * The manifest has to say so before it lists the filename.
+   */
+  partialCoverage?: {
+    /** Printable ASCII characters the face actually maps. */
+    basicLatin: number
+    /** Out of this many. */
+    total: number
+  }
 }
 
 export interface BundleReport {
@@ -114,6 +132,31 @@ function manifestText(report: BundleReport, generated: string): string {
       lines.push('At least one substitution changes text widths. Open the deck with these')
       lines.push('fonts installed and check for text that has reflowed or overflowed its')
       lines.push('box before you rely on it.')
+      lines.push('')
+    }
+  }
+
+  // Second, and for the same reason: a file that is not what its name says it
+  // is. A reader who installs one of these gets a font that works on the deck
+  // in front of them and quietly lacks glyphs everywhere else.
+  const partial = report.entries.filter((e) => e.partialCoverage)
+  if (partial.length > 0) {
+    lines.push('─'.repeat(72))
+    lines.push('INCOMPLETE — these fonts were subsetted before you got them')
+    lines.push('─'.repeat(72))
+    lines.push('These were extracted from the presentation, where PowerPoint had already')
+    lines.push('cut them down to just the characters the deck uses. They will render this')
+    lines.push('deck correctly and then fail on any character it did not already contain.')
+    lines.push('')
+    lines.push('Install them to open this deck. Do not treat them as a copy of the font:')
+    lines.push('typing new text, or opening any other document, will show missing glyphs.')
+    lines.push('')
+    for (const e of partial) {
+      const c = e.partialCoverage!
+      lines.push(`  ${e.filename}`)
+      lines.push(`      family:     ${e.family}`)
+      lines.push(`      covers:     ${c.basicLatin} of ${c.total} basic Latin characters`)
+      lines.push(`      source:     ${e.provenance}`)
       lines.push('')
     }
   }

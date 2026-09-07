@@ -21,7 +21,33 @@
  * with the deck" is the useful and lawful answer.
  */
 
+import type { EmbedPermission } from './types'
+
 export const EOT_MAGIC = 0x504c
+
+/**
+ * Decode the OS/2 `fsType` bits the EOT header carries forward.
+ *
+ * The low four bits are a licence level rather than independent flags, and the
+ * spec is explicit that they are mutually exclusive — but real fonts do set
+ * more than one, so this checks from most restrictive to least and takes the
+ * first hit rather than trusting the file to be well-formed.
+ *
+ * 0x0100 (no subsetting) and 0x0200 (bitmap embedding only) are modifiers on
+ * top of the level and are deliberately ignored here: neither changes whether
+ * the recipient may edit the document, which is the question being asked.
+ *
+ * Measured on the fixtures: Garamond and Corbel out of PowerPoint are 0x0008
+ * (editable), Canva Sans is 0x0000 (installable).
+ */
+export function embedPermission(fsType: number | undefined): EmbedPermission {
+  if (fsType === undefined) return 'unknown'
+  if (fsType & 0x0002) return 'restricted'
+  if (fsType & 0x0004) return 'preview-print'
+  if (fsType & 0x0008) return 'editable'
+  if ((fsType & 0x000f) === 0) return 'installable'
+  return 'unknown'
+}
 
 export interface EotInfo {
   eotSize: number

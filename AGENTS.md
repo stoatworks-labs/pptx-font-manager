@@ -152,6 +152,54 @@ There is a licensing reason as well as a technical one not to fight MTX:
 permission to *embed* a font in a document is not permission to extract and
 install it. Reporting "this travels with the deck" is the useful answer.
 
+### 5.1 Full vs subset embedding, and why the flag is not enough
+
+PowerPoint's "Embed fonts in the file" has two settings, and the difference is
+what the recipient can do:
+
+| Setting                        | XML                     | At the other end          |
+| ------------------------------ | ----------------------- | ------------------------- |
+| Embed **all** characters       | `saveSubsetFonts="0"`   | view, print **and edit**  |
+| Embed only characters **used** | `saveSubsetFonts="1"`   | view and print, no edit   |
+
+Both live on `<p:presentation>`, and both are `ST_OnOff`, so **`=== '1'` is a
+bug**: Office writes `embedTrueTypeFonts="1"`, Canva writes
+`embedTrueTypeFonts="true"`. `onOff()` in `scan.ts` takes `1`/`true`/`on`.
+
+The flag is a **claim by the producer, not a property of the bytes**, and both
+fixtures prove it in different directions:
+
+```
+office-embedded.pptx  saveSubsetFonts="1"  MTX-compressed — unmeasurable
+canva-embedded.pptx   saveSubsetFonts="1"  606 glyphs, all 95 printable ASCII
+```
+
+Canva sets the subset flag and then embeds a complete Latin face. A tool that
+reads the flag alone would say that deck's font cannot render anything new —
+wrong, and wrong in the confident-looking way §2 exists to prevent.
+
+So `scan.ts` reports **two things side by side and never merges them**:
+
+- `mode` / `editable` — from the flag, because the flag is what PowerPoint
+  itself acts on when it decides whether to allow editing.
+- `coverage` — measured from the recovered face by `sfnt.ts`, because that is
+  what decides whether text actually *renders*.
+
+`evidence` names their relationship. `fuller-than-claimed` is the Canva case.
+`thinner-than-claimed` is the dangerous one — declared full, so editing is
+allowed, with glyphs that are not there. `unverifiable` is every PowerPoint
+deck, forever, because MTX cannot be unpacked.
+
+Coverage is `basicLatin`, resolved one codepoint at a time — not the glyph
+count, which varies by two orders of magnitude between typefaces and settles
+nothing. A family reports its **weakest** face: regular can be complete while
+bold was cut down to two words, and the weakest is what breaks.
+
+The bundle consequence is the sharp one. A subsetted face extracted into the
+zip installs cleanly, renders the deck it came from perfectly, and fails on the
+first character nobody had typed yet — under the real font's name. That gets
+its own `INCOMPLETE` section in `MANIFEST.txt`, above the file inventory.
+
 ---
 
 ## 6. Google Fonts: the CSS API cannot give you an installable font

@@ -288,6 +288,36 @@ button:disabled {
 }
 
 /*
+ * Embedded fonts, on the same three-colour logic as substitutes.
+ *
+ * Full embedding is genuinely sorted: the font travels and the recipient can
+ * edit. A subset is not a problem, just a smaller promise — the deck still
+ * renders everywhere, editing is what is withheld — so it reads as
+ * information, not as a warning.
+ *
+ * Amber is reserved for the one case that can catch someone out: the deck
+ * says all characters are present, the file says otherwise, and PowerPoint
+ * will happily let them type into a font that cannot render it.
+ */
+.row .sub.sub-embed-full {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-left-color: var(--ok);
+}
+
+.row .sub.sub-embed-subset {
+  background: var(--info-bg);
+  color: var(--info);
+  border-left-color: var(--info);
+}
+
+.row .sub.sub-embed-risk {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-left-color: var(--warn);
+}
+
+/*
  * Adobe Fonts. Informational rather than a fix — there is nothing to download,
  * so this is neither the green "sorted" nor the amber "careful" of a
  * substitute. It carries the one insight the tool can offer here: the font is

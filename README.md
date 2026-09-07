@@ -108,6 +108,35 @@ and what happens next depends on who wrote the file:
 Either way the font travels with the deck, so it will render wherever the
 `.pptx` goes. The distinction only matters for what can go in the bundle.
 
+### Embedded, but can the other end edit it?
+
+PowerPoint offers two kinds of embedding, and they are not the same promise:
+
+| Saved as                       | The recipient can        |
+| ------------------------------ | ------------------------ |
+| Embed **all** characters       | view, print **and edit** |
+| Embed only the characters used | view and print only      |
+
+The second one ships just the glyphs this deck happened to need, so PowerPoint
+stops anyone without the font from editing that text. The app reads the
+setting and labels each embedded font **editable** or **read-only**.
+
+It also checks the setting against the file, because the setting is a claim
+rather than a fact. A Canva deck declares "characters used only" and then
+embeds a complete Latin face — so it is marked read-only, and told that the
+face will in fact render anything you add. The reverse happens too, and matters
+more: a deck that declares every character while carrying a face cut down to 5
+of the 95 printable ASCII characters will let you type and then show you
+nothing. That one gets a warning.
+
+PowerPoint's own embedder compresses its payload, so for decks written by
+PowerPoint the setting is the only evidence there will ever be, and the app
+says so rather than guessing.
+
+If a cut-down face ends up in a bundle, `MANIFEST.txt` says which characters
+it actually has, before it lists the filename — a subsetted font installs
+perfectly and then fails on the first character nobody had typed yet.
+
 ---
 
 ## The bundle, and two traps it works around

@@ -76,6 +76,11 @@ deploy `npx wrangler deploy`.
   nothing and the CoreSync file path proves everything. See AGENTS.md §11.
 - **Keep metric-compatible substitutes distinct from merely similar ones.**
   See AGENTS.md §9 — one preserves the deck's line breaks, the other does not.
+- **Never collapse `saveSubsetFonts` into the measured coverage.** See
+  AGENTS.md §5.1 — the flag says what PowerPoint will *allow*, the bytes say
+  what will *render*, and Canva ships decks where they disagree.
+- **Read OOXML booleans with `onOff()`, never `=== '1'`.** Office writes `1`,
+  Canva writes `true`; a strict test loses every Canva deck silently.
 - Test fixtures are private decks and stay gitignored.
 
 ## Regenerating the Adobe recognition catalogue

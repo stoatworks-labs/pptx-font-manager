@@ -234,3 +234,70 @@ describe('Windows installer', () => {
     expect(readme).toMatch(/Trust PowerPoint, not the browser/i)
   })
 })
+
+/**
+ * A face extracted from the deck that PowerPoint had already cut down.
+ *
+ * This is the entry that most needs the manifest: it installs cleanly, renders
+ * the deck it came from, and then fails on the first character nobody typed.
+ */
+const partialEmbedded: BundleEntry = {
+  filename: 'CanvaSans.ttf',
+  data: fakeTtf(96),
+  family: 'Canva Sans',
+  source: 'embedded',
+  license: 'Embedded in the presentation — terms unknown',
+  redistributable: false,
+  provenance: 'extracted from ppt/fonts/font10.fntdata',
+  partialCoverage: { basicLatin: 31, total: 95 },
+}
+
+const completeEmbedded: BundleEntry = {
+  filename: 'WholeSans.ttf',
+  data: fakeTtf(96),
+  family: 'Whole Sans',
+  source: 'embedded',
+  license: 'Embedded in the presentation — terms unknown',
+  redistributable: false,
+  provenance: 'extracted from ppt/fonts/font11.fntdata',
+}
+
+const manifestOf = (entries: BundleEntry[]) => {
+  const zip = unzipSync(buildBundle({ deckName: 'Deck.pptx', entries, unavailable: [] }))
+  return strFromU8(zip['MANIFEST.txt']!)
+}
+
+describe('bundle manifest — incomplete embedded faces', () => {
+  it('calls out a subsetted face with its actual coverage', () => {
+    const m = manifestOf([partialEmbedded])
+    expect(m).toContain('INCOMPLETE')
+    expect(m).toContain('CanvaSans.ttf')
+    expect(m).toContain('31 of 95 basic Latin characters')
+    // The reader has to know what breaks, not just that something might.
+    expect(m).toMatch(/fail on any character it did not already contain/)
+  })
+
+  it('says nothing about coverage for a face that was not cut down', () => {
+    const m = manifestOf([completeEmbedded])
+    expect(m).not.toContain('INCOMPLETE')
+    expect(m).toContain('WholeSans.ttf')
+  })
+
+  it('warns before it lists filenames, and still lists the file', () => {
+    const m = manifestOf([freeEntry, partialEmbedded])
+    // Warning sections come before the inventory, so nobody reads a filename
+    // and stops there.
+    expect(m.indexOf('INCOMPLETE')).toBeLessThan(m.indexOf('FREE TO REDISTRIBUTE'))
+    // Still restricted: extracting from a deck is not a redistribution licence.
+    expect(m).toContain('RESTRICTED')
+  })
+
+  it('keeps substitutions and incomplete faces as separate warnings', () => {
+    const m = manifestOf([metricSubstitute, partialEmbedded])
+    expect(m).toContain('SUBSTITUTIONS')
+    expect(m).toContain('INCOMPLETE')
+    // A stand-in and a cut-down original are different problems with different
+    // fixes; collapsing them would lose which one the reader has.
+    expect(m.indexOf('SUBSTITUTIONS')).toBeLessThan(m.indexOf('INCOMPLETE'))
+  })
+})
