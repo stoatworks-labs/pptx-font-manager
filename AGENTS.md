@@ -360,10 +360,22 @@ installed *while* Edge was running stayed missing in the same page, after
 `Page.reload`, in a new tab on another origin, and to `queryLocalFonts` —
 headless in session 0 and headed on the interactive desktop with the
 installer's `WM_FONTCHANGE` reaching it — until the browser process was
-restarted. The list lives in the browser process, which every tab and iframe
-shares, so no page-side trick reaches past it. The earlier run most likely
-hit the same thing: Edge's Startup boost keeps a process alive after the last
-window closes, so "two fresh launches" need not have been fresh processes.
+restarted. The cleanest single run, headed, served over `http://localhost`,
+with the `localFonts` permission granted through CDP and a family the
+machine had never held (Aboreto): canvas false and 255 enumerated fonts
+before the install, identical in the same page and after a reload, then
+canvas true and 256 with `Aboreto | Aboreto Regular | Aboreto-Regular` the
+moment a new browser process came up. The list lives in the browser
+process, which every tab and iframe shares, so no page-side trick reaches
+past it — and `window.open` cannot start a new process, so neither can a
+"fresh window". The earlier run most likely hit the same thing: Edge's
+Startup boost keeps a process alive after the last window closes, so "two
+fresh launches" need not have been fresh processes.
+
+One probe caveat surfaced on the way: the canvas probe reported `Aptos
+Black` present on a machine that had only `Aptos` — Chromium resolves a
+"Family Weight" name to the base family — so a raw-name canvas hit for a
+styled name proves the family, not the face.
 
 The consequence for the product: **on Windows the web app keeps reporting a
 font as missing after the user installs it, and a re-check cannot fix that.**
@@ -382,8 +394,9 @@ Harness notes for the next person: a process started from an ssh session dies
 with it (OpenSSH's job object) — launch Edge through
 `Invoke-CimMethod Win32_Process Create` for session 0, or a scheduled task
 with an `Interactive` principal for the desktop session; tunnel the DevTools
-port with `ssh -L`. `queryLocalFonts` returned an empty list headless even
-with `Browser.grantPermissions`, so that path is still unexercised.
+port with `ssh -L`. `queryLocalFonts` returns an empty list in headless
+mode whatever `Browser.grantPermissions` says; headed, with the page on
+`http://localhost` and the grant scoped to that origin, it enumerates.
 
 ### 8.3 Why the Rust side re-validates everything
 
@@ -457,9 +470,10 @@ Verified working, end to end:
 - `install-fonts.command` is syntax-checked (`bash -n`) but has not been run
   against a real font install — the desktop app's own install path was tested
   instead, since that is the one people will use.
-- The Local Font Access path (`queryLocalFonts`) is implemented but the
-  permission prompt has not been accepted in a test run, so blob-reading of
-  locally installed fonts in the browser is unexercised.
+- The Local Font Access path (`queryLocalFonts`) has been exercised for
+  enumeration only (§8.2b, permission granted through CDP rather than the
+  prompt); blob-reading of locally installed fonts into a bundle is still
+  unexercised.
 - The desktop app has not been driven through a full deck-to-install cycle in
   its own window; the install path was exercised through
   `cargo run --example install_probe` instead.
