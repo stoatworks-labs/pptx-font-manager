@@ -2,7 +2,7 @@ import { defaultInventory, type FontInventory } from './fontcheck'
 import { isDesktop, nativeInventory } from './native'
 
 export { isDesktop } from './native'
-export { hasLocalFontAccess, queryLocalFontInventory } from './fontcheck'
+export { fontListSnapshottedAtLaunch, hasLocalFontAccess, queryLocalFontInventory } from './fontcheck'
 export type { FontInventory } from './fontcheck'
 
 /**

@@ -117,7 +117,15 @@ $dest = Join-Path $env:LOCALAPPDATA 'Microsoft\\Windows\\Fonts'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
 $regPath = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'
-New-Item -Path $regPath -Force | Out-Null
+
+# Create the key only if it is missing. NEVER \`New-Item -Force\` it: on the
+# registry provider that recreates an existing key EMPTY, which unregisters
+# every per-user font on the machine - the user's own included. The files
+# survive, so nothing looks wrong until the next sign-in, when they are gone.
+# Measured on Windows 11 26200: 10 values before that line, 0 after.
+if (-not (Test-Path $regPath)) {
+  New-Item -Path $regPath | Out-Null
+}
 
 # Telling the OS a font arrived is a separate step from putting it there.
 # Windows' own installer calls AddFontResourceW and then broadcasts
@@ -196,7 +204,8 @@ if ($installed -gt 0) {
 Write-Host ""
 Write-Host "Done - $installed installed, $skipped already present."
 Write-Host "Applications already running may need restarting to see new fonts."
-Write-Host "Some browsers do not pick up per-user fonts at all - see README.txt."
+Write-Host "Chrome and Edge only read the font list when they start: close the browser"
+Write-Host "completely (Edge keeps running in the tray) before checking again."
 Read-Host "Press Enter to close"
 `
 
@@ -294,15 +303,17 @@ WHERE THE FONTS GO
   Applications that are already open may need restarting before they see the
   new fonts.
 
-  ON WINDOWS, BROWSERS ARE AN EXCEPTION. PowerPoint, Word and anything else
-  using the normal Windows font stack will pick these up. Chromium-based
-  browsers — Chrome, Edge — do not reliably see fonts installed for a single
-  user, even after a restart. This was measured, not guessed: a font that
-  Windows itself listed correctly stayed invisible to Edge.
+  ON WINDOWS, BROWSERS NEED A REAL RESTART. PowerPoint, Word and anything
+  else using the normal Windows font stack pick the new fonts up straight
+  away. Chrome and Edge read the Windows font list once, when the browser
+  starts, and never again: a font installed while the browser is open stays
+  invisible to every page in it - reloading, opening a new tab or granting
+  font access makes no difference. This was measured, not guessed.
 
-  It does not affect your deck. It does mean that if you check with a
-  web-based font tool afterwards, it may still tell you the font is missing.
-  Trust PowerPoint, not the browser.
+  So if you check with a web-based font tool afterwards and it still says
+  the font is missing, close the browser completely and open it again. For
+  Edge that means ending it from the taskbar tray as well, or turning off
+  "Startup boost" - closing the last window leaves it running.
 
 
 LICENSING

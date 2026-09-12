@@ -66,6 +66,31 @@ export function hasLocalFontAccess(): boolean {
 }
 
 /**
+ * Does this browser read the OS font list once, at launch, and never again?
+ *
+ * Measured on Windows 11 26200 with Edge 153: a font installed while the
+ * browser was running stayed invisible to the canvas probe in the same page,
+ * after a reload, in a new tab on another origin, and to `queryLocalFonts`
+ * — headless and headed, with the installer's WM_FONTCHANGE reaching the
+ * browser — until the browser process was restarted, after which every one
+ * of them was found. Per-user fonts are not the problem; the snapshot is.
+ *
+ * Nothing a page can do gets past it: the list lives in the browser process,
+ * which every tab and iframe shares. So on Windows a "missing" verdict for a
+ * font the user has just installed is expected, and the honest advice is to
+ * restart the browser rather than re-check.
+ *
+ * Only asserted for Windows, because that is where it was measured; Chromium
+ * on macOS refreshes on the system's font-change notification.
+ */
+export function fontListSnapshottedAtLaunch(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const uaData = (navigator as { userAgentData?: { platform?: string } }).userAgentData
+  const platform = uaData?.platform ?? navigator.platform ?? ''
+  return /^win/i.test(platform)
+}
+
+/**
  * Request the full local font list. Must be called from a user gesture — the
  * permission prompt is gated on one, and calling without it rejects.
  */

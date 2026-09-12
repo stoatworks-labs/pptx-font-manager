@@ -127,6 +127,7 @@ The installers write to the **per-user font directory**, so no administrator pas
 | Symptom | Cause |
 | --- | --- |
 | **A font is listed as missing and I have it** | Should be rare — names are resolved to families first. Check whether it is a Creative Cloud sync. |
+| **I installed the font while this page was open, and it still says missing** (Windows) | Chrome and Edge read the Windows font list only when they start — a reload does not help. Close the browser completely (Edge also runs on in the taskbar tray) and reopen. PowerPoint sees the font straight away. |
 | **The installer will not run** | Gatekeeper or Mark-of-the-Web. The bundle's README covers both, and Font Book needs no script at all. |
 | **An embedded font could not be extracted** | It is PowerPoint's compressed EOT. It still travels with the deck. |
 | **A substitution moved my line breaks** | It was a visually similar face, not a metric-compatible one. The app says which. |

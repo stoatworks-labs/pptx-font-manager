@@ -225,13 +225,35 @@ describe('Windows installer', () => {
     expect(s).toContain('0x001D') // WM_FONTCHANGE
   })
 
-  it('warns that Chromium browsers may still not see the font', () => {
+  it('never recreates the per-user font registry key', () => {
+    const s = ps1()
+    // `New-Item -Force` on an EXISTING registry key recreates it empty. On
+    // the Fonts key that unregisters every per-user font on the machine —
+    // measured on Windows 11 26200: 10 values before the line, 0 after. The
+    // files stay, so the damage only shows at the next sign-in. This is also
+    // what was once misread as "the registry value did not persist".
+    expect(s).not.toMatch(/New-Item\s[^\n]*\$regPath[^\n]*-Force/)
+    expect(s).not.toMatch(/New-Item\s[^\n]*-Force[^\n]*\$regPath/)
+    expect(s).toMatch(/if \(-not \(Test-Path \$regPath\)\)/)
+  })
+
+  it('tells the user a running browser needs a real restart, not a reload', () => {
     const files = unzipSync(
       buildBundle({ deckName: 'D.pptx', entries: [freeEntry], unavailable: [] }),
     )
     const readme = strFromU8(files['README.txt']!)
-    expect(readme).toMatch(/BROWSERS ARE AN EXCEPTION/i)
-    expect(readme).toMatch(/Trust PowerPoint, not the browser/i)
+    // Chromium reads the Windows font list once per browser process. A font
+    // installed while it runs stays invisible to every page — measured across
+    // reload, a new tab and queryLocalFonts — until the process restarts. The
+    // old wording claimed per-user fonts were never seen at all; they are.
+    expect(readme).toMatch(/BROWSERS NEED A REAL RESTART/i)
+    expect(readme).toMatch(/close the browser completely/i)
+    expect(readme).toMatch(/Startup boost/)
+    expect(readme).not.toMatch(/even after a restart/i)
+    // And the installer's own closing line says the same thing.
+    const s = ps1()
+    expect(s).toMatch(/only read the font list when they start/)
+    expect(s).not.toMatch(/do not pick up per-user fonts at all/)
   })
 })
 

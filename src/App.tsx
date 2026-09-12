@@ -14,6 +14,7 @@ import {
 } from './lib/resolve'
 import {
   bestInventory,
+  fontListSnapshottedAtLaunch,
   hasLocalFontAccess,
   isDesktop,
   queryLocalFontInventory,
@@ -534,6 +535,23 @@ export default function App() {
               This browser has no Local Font Access API, so fonts are detected by measuring text
               width. That is reliable for checking what is installed, but fonts you already own
               cannot be read into a bundle. Chrome, Edge, or the desktop app can do both.
+            </div>
+          )}
+
+          {/*
+            On Windows the browser reads the OS font list once, at launch. A font
+            installed since then is invisible to every page in it — reload, new
+            tab and the Local Font Access prompt included — so a re-check here
+            would only repeat the wrong answer. Say so, once there is something
+            reported missing for it to apply to.
+          */}
+          {!desktop && summary.missing > 0 && fontListSnapshottedAtLaunch() && (
+            <div className="note info">
+              <strong>Installed a font since this browser was opened?</strong> On Windows, Chrome
+              and Edge read the font list only when they start, so it will keep showing as missing
+              here — even after a reload — until the browser is closed completely and reopened.
+              Edge keeps running in the taskbar tray after its last window closes; end it there
+              too. PowerPoint itself sees the font straight away.
             </div>
           )}
 

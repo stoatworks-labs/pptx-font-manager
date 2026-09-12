@@ -5,10 +5,11 @@
 > against three real presentations of different provenance — one from Canva, one
 > from Office with embedded fonts, one 316 MB deck that names almost no fonts
 > explicitly — and its installed/missing verdicts were checked font by font
-> against CoreText's own list on macOS. The bundle's **Windows installer script
-> has never been run on Windows**; the macOS and Linux ones are syntax-checked
-> but have not been run against a real font install. Check the bundle on a spare
-> machine before you rely on it in front of a client.
+> against CoreText's own list on macOS. The bundle's Windows installer has been
+> run end to end on Windows 11 — which is how it was caught unregistering every
+> other per-user font on the machine, fixed since; the macOS and Linux ones are
+> syntax-checked but have not been run against a real font install. Check the
+> bundle on a spare machine before you rely on it in front of a client.
 
 Drop in a `.pptx`. Find out which fonts it **actually** uses, which of those are
 installed here, and take away a sidecar `.zip` that installs the rest on the

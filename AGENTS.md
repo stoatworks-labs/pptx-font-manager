@@ -324,31 +324,52 @@ What the bundle installer got right, confirmed end to end under a genuine
 
 What it got wrong, and is now fixed:
 
-- **The registry value name must be the font's own face name.** It was written
-  from the filename — `Lobster-Regular (TrueType)` instead of
-  `Lobster (TrueType)`. A value written that way **did not persist**: it was
-  present immediately after the install and gone by the next check, while the
-  font itself stayed usable. `install-fonts.ps1` now reads the real face name
-  out of the file with `PrivateFontCollection` before writing the value, which
-  is what the shell's own installer records.
+- **The registry value name should be the font's own face name.** It was
+  written from the filename — `Lobster-Regular (TrueType)` instead of
+  `Lobster (TrueType)`. `install-fonts.ps1` now reads the real face name out
+  of the file with `PrivateFontCollection` before writing the value, which is
+  what the shell's own installer records (checked on 2026-09-12 by installing
+  through `Shell.Application`'s Fonts folder: same value name, same full-path
+  data). The value "not persisting" that was blamed on the name was something
+  else entirely — see the next bullet.
+- **`New-Item -Path $regPath -Force` empties the key.** On the registry
+  provider, `-Force` against an *existing* key recreates it with no values.
+  The script ran that line on every start, so each run unregistered **every
+  per-user font on the machine** — earlier bundles' fonts and the user's own
+  right-click installs alike — and then registered only its own. The files
+  stay and GDI keeps the session's copies, so nothing looks wrong until the
+  next sign-in, when they are all gone. Measured on Windows 11 26200: 10
+  values before that one line, 0 after; the fixed script (`Test-Path` guard)
+  went 10 → 11. This is what the earlier test saw as "the value did not
+  persist": the second run wiped the first run's value. The Rust
+  `register_font` uses `RegCreateKeyExW`, which opens an existing key intact,
+  and was never affected.
 - **Nothing told the OS a font had arrived.** Both the script and the Rust
   `register_font` copied the file and wrote the value and stopped there.
   Windows' own installer also calls `AddFontResourceW` and broadcasts
   `WM_FONTCHANGE`; both now do. This is the same class of bug as the macOS
   asynchronous-registration one in §8.1, with a different remedy.
 
-**Still open — Chromium does not see per-user fonts.** After a successful
-install that GDI could see, Edge 151 could not: the canvas width probe reported
-the family absent, across two fresh Edge launches including one after
-`taskkill`. Windows' own fonts (Arial, Calibri, Segoe UI, Cambria) all probe
-correctly in the same run, so the probe itself works on Windows — it is
-specifically the freshly installed per-user font that Edge cannot reach.
+**Chromium sees per-user fonts — but only the ones that existed when the
+browser started.** The 2026-09-12 run on Windows 11 26200 with Edge 153,
+driven over CDP, retracts the earlier "Edge cannot see per-user fonts"
+finding. Every deck font of the day (`Neo Sans Pro`, `Neo Sans Pro Medium`,
+`Aptos`, `Aptos Display`, plus variable Montserrat and DM Sans) probed as
+installed in a fresh Edge launched *after* the per-user install. A font
+installed *while* Edge was running stayed missing in the same page, after
+`Page.reload`, in a new tab on another origin, and to `queryLocalFonts` —
+headless in session 0 and headed on the interactive desktop with the
+installer's `WM_FONTCHANGE` reaching it — until the browser process was
+restarted. The list lives in the browser process, which every tab and iframe
+shares, so no page-side trick reaches past it. The earlier run most likely
+hit the same thing: Edge's Startup boost keeps a process alive after the last
+window closes, so "two fresh launches" need not have been fresh processes.
 
-That has a real consequence: **on Windows the web app will keep reporting a
-font as missing after the user installs it.** The desktop build reads the OS
-font registry directly and is unaffected. Whether a logout fixes it is
-untested — the VM rebooted to a lock screen and testing stopped there rather
-than entering credentials.
+The consequence for the product: **on Windows the web app keeps reporting a
+font as missing after the user installs it, and a re-check cannot fix that.**
+The app now says so (`fontListSnapshottedAtLaunch()` in `fontcheck.ts`, the
+note in `App.tsx`), as do the bundle's README and the installer's closing
+line. The desktop build reads the OS font list itself and is unaffected.
 
 Two other things the Windows run confirmed, which macOS could not:
 
@@ -357,9 +378,12 @@ Two other things the Windows run confirmed, which macOS could not:
 - the `raw.githubusercontent.com` font fetch clears CORS from Edge on Windows
   (160,316 bytes, sfnt signature intact).
 
-`queryLocalFonts` was reported absent in that run, but the probe page was
-served over plain HTTP — it is a secure-context API, so that result says
-nothing about Edge. It was not retested.
+Harness notes for the next person: a process started from an ssh session dies
+with it (OpenSSH's job object) — launch Edge through
+`Invoke-CimMethod Win32_Process Create` for session 0, or a scheduled task
+with an `Interactive` principal for the desktop session; tunnel the DevTools
+port with `ssh -L`. `queryLocalFonts` returned an empty list headless even
+with `Browser.grantPermissions`, so that path is still unexercised.
 
 ### 8.3 Why the Rust side re-validates everything
 
@@ -424,9 +448,10 @@ Verified working, end to end:
   for want of `llvm-rc`. The Win32 FFI block was checked only by compiling an
   equivalent against stubs on the host, which proves the signatures are
   well-formed and nothing else.
-- **Whether Chromium ever sees a per-user font**, and whether a logout fixes
-  it — see the open item in §8.2b. The VM rebooted to a lock screen and testing
-  stopped rather than entering credentials.
+- Whether per-user fonts registered by the bundle survive a **sign-out and
+  back in**. The registrations now persist across further installs (§8.2b),
+  and they are byte-for-byte what the shell writes, but a logon cycle has not
+  been driven.
 - **Linux, at all.** The `fc-cache` path in `post_install_note` and the bundle's
   `install-fonts.sh` are both unexecuted.
 - `install-fonts.command` is syntax-checked (`bash -n`) but has not been run
