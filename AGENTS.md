@@ -350,27 +350,34 @@ What it got wrong, and is now fixed:
   `WM_FONTCHANGE`; both now do. This is the same class of bug as the macOS
   asynchronous-registration one in §8.1, with a different remedy.
 
-**Chromium sees per-user fonts — but only the ones that existed when the
-browser started.** The 2026-09-12 run on Windows 11 26200 with Edge 153,
-driven over CDP, retracts the earlier "Edge cannot see per-user fonts"
-finding. Every deck font of the day (`Neo Sans Pro`, `Neo Sans Pro Medium`,
+**Chromium keeps two font lists, and only one of them refreshes in-process.**
+The 2026-09-12 run on Windows 11 26200 with Edge 153, driven over CDP,
+retracts the earlier "Edge cannot see per-user fonts" finding. Every deck font of the day (`Neo Sans Pro`, `Neo Sans Pro Medium`,
 `Aptos`, `Aptos Display`, plus variable Montserrat and DM Sans) probed as
 installed in a fresh Edge launched *after* the per-user install. A font
-installed *while* Edge was running stayed missing in the same page, after
-`Page.reload`, in a new tab on another origin, and to `queryLocalFonts` —
-headless in session 0 and headed on the interactive desktop with the
-installer's `WM_FONTCHANGE` reaching it — until the browser process was
-restarted. The cleanest single run, headed, served over `http://localhost`,
-with the `localFonts` permission granted through CDP and a family the
-machine had never held (Aboreto): canvas false and 255 enumerated fonts
-before the install, identical in the same page and after a reload, then
-canvas true and 256 with `Aboreto | Aboreto Regular | Aboreto-Regular` the
-moment a new browser process came up. The list lives in the browser
-process, which every tab and iframe shares, so no page-side trick reaches
-past it — and `window.open` cannot start a new process, so neither can a
-"fresh window". The earlier run most likely hit the same thing: Edge's
-Startup boost keeps a process alive after the last window closes, so "two
-fresh launches" need not have been fresh processes.
+installed *while* Edge was running is invisible to the **rendering** path —
+the canvas width probe (the app's default) and CSS `local()`/`FontFace` alike
+— in the same page, after `Page.reload`, in a new-origin tab, and in a
+`noopener` popup (a fresh renderer). That list is fixed when the browser
+*process* starts and nothing short of a process restart moves it; every tab,
+iframe and popup shares it, `window.open` cannot start a new process, and a
+Windows PWA is hosted by the same process, so no page-side trick reaches past
+it. Confirmed on a browser pid that outlived the install by ~100 min: Abel
+still `false` to both canvas and `local()`.
+
+`queryLocalFonts()` is the exception — a **separate enumeration list that does
+refresh in-process** (this retracts the first version of this section, which
+called it just as frozen; that was judged from an Aboreto run checked only
+seconds after install). Abel, installed into a browser pid that started 9 min
+earlier and never restarted, enumerated correctly later the same session. But
+the refresh latency is long and irregular — a second fresh family (ABeeZee)
+was still absent from `queryLocalFonts` after **12+ min** of 20 s polling in
+the same long-lived page, while Abel showed by ~100 min — and even once it
+lists a font, that font still will not *render* in that browser (the CSS path
+is frozen). So it cannot power a live "re-check", and the only fast reliable
+answer remains a browser-process restart. A genuinely new browser process
+does re-enumerate everything at once (clean run: Aboreto, 255 → 256 the moment
+a fresh process came up).
 
 One probe caveat surfaced on the way: the canvas probe reported `Aptos
 Black` present on a machine that had only `Aptos` — Chromium resolves a
@@ -378,10 +385,15 @@ Black` present on a machine that had only `Aptos` — Chromium resolves a
 styled name proves the family, not the face.
 
 The consequence for the product: **on Windows the web app keeps reporting a
-font as missing after the user installs it, and a re-check cannot fix that.**
-The app now says so (`fontListSnapshottedAtLaunch()` in `fontcheck.ts`, the
-note in `App.tsx`), as do the bundle's README and the installer's closing
-line. The desktop build reads the OS font list itself and is unaffected.
+font as missing after the user installs it, and no page-side re-check reliably
+fixes that** — the canvas probe is frozen until a browser restart, and the
+`queryLocalFonts` refresh is far too slow (>12 min) and too irregular to hang a
+button on (and would not make the font render in that browser anyway). The app
+says so (`fontListSnapshottedAtLaunch()` in `fontcheck.ts`, the note in
+`App.tsx`), as do the bundle's README and the installer's closing line. A live
+in-app "installed now ✓" needs native code — the desktop build's font-kit
+inventory, or a `/api/fonts` endpoint on the tray launcher. The desktop build
+reads the OS font list itself and is unaffected.
 
 Two other things the Windows run confirmed, which macOS could not:
 
