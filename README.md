@@ -17,6 +17,10 @@ machine that needs them.
 
 Everything happens in the browser. The deck is never uploaded anywhere.
 
+![The hosted tool with the repo's synthetic test deck loaded: five fonts found and their install state on this machine](docs/screenshots/pptx-font-manager.png)
+
+<sub>The hosted tool with the repo's synthetic test deck (`test/fixtures/synthetic.pptx`) loaded: five fonts found, four installed on the machine that took the picture, one family present but not at the weight the deck asks for, and the bundle ready to build. The deck never left the browser.</sub>
+
 ---
 
 ## Why not just search the file for font names
