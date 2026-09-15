@@ -3,6 +3,10 @@
 Drop in a `.pptx`. **Find out which fonts it *actually* uses, which of those are installed here,
 and take away a sidecar `.zip` that installs the rest on the machine that needs them.**
 
+![The hosted tool with the repo's synthetic test deck loaded: five fonts found, four installed on the machine that took the picture, one family present but not…](screenshots/pptx-font-manager.png)
+
+*The hosted tool with the repo's synthetic test deck loaded: five fonts found, four installed on the machine that took the picture, one family present but not at the weight the deck asks for, and the bundle ready to build. The deck never left the browser.*
+
 Everything happens in the browser. The deck is never uploaded anywhere.
 
 > **Before you rely on this:** the scanner is verified against three real presentations of
