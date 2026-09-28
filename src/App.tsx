@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scanPptx } from './core/scan'
+import { scanMedia, type MediaScanResult } from './core/media'
+import { MediaPanel } from './MediaPanel'
 import { BASIC_LATIN_TOTAL } from './core/sfnt'
 import { fetchGoogleFaces, CATALOGUE_COUNT, CATALOGUE_DATE } from './core/google'
 import { FONTSOURCE_COUNT } from './core/fontsource'
@@ -52,11 +54,34 @@ function download(data: Uint8Array, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
 
+/**
+ * Download a file assembled from chunks. The media paths hand back views into
+ * the deck rather than one new buffer — see `rewriteZip` — and a Blob can be
+ * built from those directly. The revoke waits longer than `download`'s: a
+ * 2 GB deck takes a while to hand over.
+ */
+function downloadParts(parts: Uint8Array[], filename: string, type: string) {
+  const url = URL.createObjectURL(new Blob(parts as BlobPart[], { type }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
 export default function App() {
   const desktop = isDesktop()
 
   const [deckName, setDeckName] = useState('')
   const [scan, setScan] = useState<ScanResult | null>(null)
+  const [media, setMedia] = useState<MediaScanResult | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+  /** The deck's bytes, kept for saving media and writing the hidden-slides copy. */
+  const deckRef = useRef<Uint8Array | null>(null)
+  /** Bumped per load, so dropping the same file again resets the media panel. */
+  const [deckId, setDeckId] = useState(0)
   const [inventory, setInventory] = useState<FontInventory>(() => defaultInventory())
   const [installDir, setInstallDir] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -87,11 +112,22 @@ export default function App() {
     async (file: File) => {
       setError(null)
       setScan(null)
+      setMedia(null)
+      setMediaError(null)
+      deckRef.current = null
       setReport(null)
       setBusy('Reading presentation…')
       try {
         const buf = new Uint8Array(await file.arrayBuffer())
         const result = scanPptx(buf)
+        // A failure here must not cost the user the font report.
+        try {
+          setMedia(scanMedia(buf))
+        } catch (e) {
+          setMediaError(`Video and audio could not be checked: ${(e as Error).message}`)
+        }
+        deckRef.current = buf
+        setDeckId((n) => n + 1)
         setDeckName(file.name)
         setScan(result)
         await refreshInventory(result)
@@ -443,6 +479,8 @@ export default function App() {
       <p className="sub">
         Find the fonts a deck actually uses, check which are installed here, and{' '}
         {desktop ? 'install the ones that are missing' : 'build a sidecar bundle for the machine that needs them'}.
+        Then check its video: what will play where, what needs the internet, and the files
+        themselves.
         {!desktop && ' The file never leaves your browser.'}
       </p>
 
@@ -623,6 +661,24 @@ export default function App() {
                 <div key={i}>{w.message}</div>
               ))}
             </div>
+          )}
+
+          {mediaError && (
+            <div className="note warn" style={{ marginTop: 14 }}>
+              {mediaError}
+            </div>
+          )}
+          {media && deckRef.current && (
+            <MediaPanel
+              key={deckId}
+              media={media}
+              deck={deckRef.current}
+              deckName={deckName}
+              busy={!!busy}
+              setBusy={setBusy}
+              setError={setError}
+              save={downloadParts}
+            />
           )}
         </>
       )}

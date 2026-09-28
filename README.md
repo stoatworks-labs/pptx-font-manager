@@ -174,6 +174,65 @@ manifest before you send it to anyone.
 
 ---
 
+## Video and audio
+
+Fonts are not the only thing that goes wrong when a deck reaches the venue. The
+same scan also lists every video and sound in the deck, and answers the three
+questions an operator asks before a show:
+
+**Will it play?** The file extension says almost nothing — `.mp4` can hold H.264
+that plays everywhere, HEVC that needs a codec pack on Windows, or 10-bit H.264
+that plays nowhere. The app reads the container and the codec configuration
+(profile, bit depth, chroma, resolution, frame rate) and gives a separate
+verdict for PowerPoint on **Windows** and on the **Mac**, with the reason when
+either is in doubt:
+
+| Found                                   | Windows          | Mac            |
+| --------------------------------------- | ---------------- | -------------- |
+| MP4 / MOV, H.264 8-bit 4:2:0, AAC       | plays            | plays          |
+| H.264 High 10, 4:2:2 or 4:4:4           | will not play    | will not play  |
+| H.264 wider than 4096 or taller than 2304 | check it       | plays          |
+| HEVC tagged `hvc1`                      | needs codec pack | plays          |
+| HEVC tagged `hev1`                      | needs codec pack | will not play  |
+| ProRes                                  | will not play    | plays          |
+| HAP, DNxHD / DNxHR                      | will not play    | —              |
+| WMV / ASF, AVI                          | plays            | will not play  |
+
+PowerPoint does not decode video itself — it hands the file to Media Foundation
+on Windows and AVFoundation on the Mac — so these verdicts are what those
+frameworks can decode, cross-checked against Microsoft's list of supported
+formats. They come from documentation and the frameworks' known decoders, not
+from playing every combination on both platforms.
+
+**What needs the internet?** Online videos (YouTube, Vimeo, Microsoft Stream,
+SharePoint, OneDrive), web add-ins that load a page, old Flash objects, and
+hyperlinks to video sites. SharePoint, Stream and OneDrive for work also need
+PowerPoint signed in to an account that can see the file — a second way to fail
+on a borrowed laptop. Stream (Classic) and Flash are reported as dead, because
+they are. Videos **linked** from the author's disk rather than embedded are
+listed too: they are not in the file at all.
+
+**Can I have the files?** Each embedded file can be saved on its own, or all of
+them as one zip, named after the slide and shape they came from (`Slide 12 -
+Walk-in loop.mp4`) with a `MEDIA.txt` that says which slide each belongs to
+and how PowerPoint played it — start mode, loop, volume, trim. The files are the
+bytes PowerPoint stored, untouched; a PowerPoint trim is not applied to them,
+and `MEDIA.txt` says so.
+
+**And take them out of the show.** For a show where video runs from a media
+server rather than PowerPoint, pick the slides (it pre-selects the ones with
+video) and download a copy of the deck with those slides **hidden**. Hidden,
+not deleted: they stay in the deck and the slideshow steps over them. Only
+those slides' XML changes — every other byte, the media included, is copied
+straight across, so a 458 MB deck comes back 150 bytes larger. Checked by
+opening the result in PowerPoint for Mac: no repair prompt, and exactly the
+chosen slides hidden. Your original file is never modified.
+
+Video on a slide layout or master plays on every slide built from it, and is
+reported against each of those slides.
+
+---
+
 ## The desktop app
 
 The browser version can tell you a font is missing and hand you a zip. It
@@ -208,12 +267,13 @@ npm run dev
 npm test
 ```
 
-Fixtures: the real decks used for testing are private and gitignored. A
-synthetic one is generated and committed, so the suite tests something on a
+Fixtures: the real decks used for testing are private and gitignored. Two
+synthetic ones are generated and committed, so the suite tests something on a
 clean clone:
 
 ```bash
-node scripts/make-test-deck.mjs
+node scripts/make-test-deck.mjs     # fonts
+node scripts/make-media-deck.mjs    # video and audio (needs ffmpeg)
 ```
 
 See [CLAUDE.md](CLAUDE.md) for the full command reference and

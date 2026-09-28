@@ -126,6 +126,39 @@ The installers write to the **per-user font directory**, so no administrator pas
 
 ---
 
+## Video and audio
+
+Below the fonts, the app lists the deck's video and sound.
+
+- **Each embedded file**, with its codec, resolution, frame rate and length, the
+  slides it plays on, and how it is set to play (automatically or on click,
+  looping, full screen, volume). Two pills say whether PowerPoint will play it on
+  **Windows** and on the **Mac**. "Needs codec pack" means an optional Microsoft
+  Store extension (HEVC, AV1, VP9) — assume the venue machine does not have it.
+  "Check it" means it may play and may not; try it on the show machine.
+- **Anything that needs the internet**, in red: online videos, web add-ins,
+  Flash objects and links to video sites. Streaming sites are often blocked on
+  venue networks. SharePoint, Stream and OneDrive for work also need PowerPoint
+  signed in to an account with access. The fix is the same for all of them:
+  download the video and insert it as a file.
+- **Linked videos**: the deck records a path on the author's computer instead of
+  holding the file. They play only if the file is at that same path on the show
+  machine.
+
+**Save** takes one file out; **Save all** gives you a zip of every file, named
+by slide, plus `MEDIA.txt` listing which slide each belongs to and its playback
+settings. The files are exactly what is inside the deck. If a clip was trimmed
+in PowerPoint, the saved file is the full original — the trim is listed in
+`MEDIA.txt`.
+
+**Hide the slides that play media** is for shows where video runs from a media
+server or playback machine instead of PowerPoint. Tick the slides (the ones with
+video are ticked for you), then download a copy with them hidden. The slides are
+still in the deck, just skipped in the slideshow, and your original file is not
+changed.
+
+---
+
 ## If something is wrong
 
 | Symptom | Cause |
@@ -136,3 +169,5 @@ The installers write to the **per-user font directory**, so no administrator pas
 | **An embedded font could not be extracted** | It is PowerPoint's compressed EOT. It still travels with the deck. |
 | **A substitution moved my line breaks** | It was a visually similar face, not a metric-compatible one. The app says which. |
 | **An Adobe font is not offered** | It cannot be bundled. Activate it through Creative Cloud on the target machine. |
+| **A video says "will not play"** | Its codec is an editing or camera format. Re-encode it as MP4, H.264, 8-bit, with AAC sound — that plays everywhere. |
+| **A video plays here and not at the venue** | Check the Windows pill: HEVC needs a codec pack there, ProRes does not play at all. Or it needs the internet — see the red box. |

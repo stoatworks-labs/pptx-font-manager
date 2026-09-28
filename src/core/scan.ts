@@ -1,5 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate'
 import { walkTags } from './xml'
+import { parseRels, relsPathFor, type Relationship } from './opc'
 import { parseFontName, normalizeKey } from './names'
 import { parseEot, isBareSfnt, extractSfnt, embedPermission } from './eot'
 import { readCoverage, BASIC_LATIN_TOTAL } from './sfnt'
@@ -96,38 +97,9 @@ function textOf(zip: Zip, part: string): string | null {
  * Parse `_rels/<name>.rels` for a part, returning target paths by
  * relationship type suffix (e.g. `slideLayout`, `slideMaster`, `theme`).
  */
-function relsFor(zip: Zip, part: string): Array<{ id: string; type: string; target: string }> {
-  const slash = part.lastIndexOf('/')
-  const dir = slash === -1 ? '' : part.slice(0, slash)
-  const file = slash === -1 ? part : part.slice(slash + 1)
-  const relPath = `${dir}/_rels/${file}.rels`
-  const xml = textOf(zip, relPath)
-  if (!xml) return []
-  const out: Array<{ id: string; type: string; target: string }> = []
-  for (const tag of walkTags(xml)) {
-    if (tag.local !== 'Relationship' || tag.close) continue
-    const target = tag.attrs.Target
-    const type = tag.attrs.Type ?? ''
-    if (!target) continue
-    out.push({
-      id: tag.attrs.Id ?? '',
-      type: type.slice(type.lastIndexOf('/') + 1),
-      target: resolvePath(dir, target),
-    })
-  }
-  return out
-}
-
-/** Resolve a rels Target (often `../theme/theme1.xml`) against its part's dir. */
-function resolvePath(baseDir: string, target: string): string {
-  if (target.startsWith('/')) return target.slice(1)
-  const stack = baseDir ? baseDir.split('/') : []
-  for (const seg of target.split('/')) {
-    if (seg === '.' || seg === '') continue
-    if (seg === '..') stack.pop()
-    else stack.push(seg)
-  }
-  return stack.join('/')
+function relsFor(zip: Zip, part: string): Relationship[] {
+  const xml = textOf(zip, relsPathFor(part))
+  return xml ? parseRels(xml, part) : []
 }
 
 /**

@@ -93,7 +93,20 @@ the same Worker is worse than one.
   what will *render*, and Canva ships decks where they disagree.
 - **Read OOXML booleans with `onOff()`, never `=== '1'`.** Office writes `1`,
   Canva writes `true`; a strict test loses every Canva deck silently.
-- Test fixtures are private decks and stay gitignored.
+- Test fixtures are private decks and stay gitignored — except the two
+  generated ones, `synthetic.pptx` and `media.pptx`, which are committed.
+  Regenerate the media one with `node scripts/make-media-deck.mjs` (needs
+  ffmpeg; the suite does not).
+- **Media never goes through `unzipSync`.** Read it with `zipdir.ts`, which
+  returns views into the deck for stored entries. A real show deck is 2 GB of
+  video. See AGENTS.md §12.
+- **Count a video per shape, not per relationship.** PowerPoint links every
+  embedded clip twice (`a:videoFile` and `p14:media`). See AGENTS.md §12.
+- **Slide numbers come from `<p:sldIdLst>`**, never from `slideN.xml` — the
+  file names drift from show order the first time someone reorders a slide.
+- **`rewriteZip` copies every unchanged entry byte for byte.** Do not "simplify"
+  it into unzip + zip: that re-deflates the media and holds two copies of the
+  deck in memory.
 
 ## Regenerating the Adobe recognition catalogue
 

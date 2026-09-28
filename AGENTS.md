@@ -93,6 +93,11 @@ src/core/         Portable, no DOM. Reusable unchanged in the desktop port.
   bundle.ts         The sidecar .zip
   installers.ts     The scripts that go inside it
   types.ts
+  opc.ts            Relationship parsing, shared by both scanners
+  media.ts          Video/audio/online-media scan; hiding slides — see §12
+  mediaprobe.ts     Container + codec sniffing, Windows/Mac playback verdicts
+  zipdir.ts         Central-directory zip reader and in-place rewriter
+src/MediaPanel.tsx  The video & audio section of the page
 src/platform/
   fontcheck.ts      Browser-only: Local Font Access + canvas probing
 src/lib/
@@ -718,6 +723,95 @@ closer, but completeness is not achievable from the public endpoint.
 `definitelyNotAdobe` helper — the data cannot support one. The catalogue records
 `libraryTotal` alongside `count` so the gap is visible in the data itself, and a
 test asserts `count < libraryTotal` so the incompleteness cannot be forgotten.
+
+## 12. Video and audio
+
+`scanMedia()` runs beside `scanPptx()` on the same bytes, and a failure in it
+must never cost the user the font report — `App.tsx` catches it separately.
+
+### What PowerPoint actually writes
+
+Checked against real Office decks (a 116-slide client deck, a 2 GB awards show
+with 70 clips), not the spec:
+
+```xml
+<p:pic><p:nvPicPr><p:cNvPr id="4" name="Comp 1"/>...
+  <p:nvPr>
+    <a:videoFile r:link="rId2"/>                         <!-- rel type .../video -->
+    <p:extLst><p:ext uri="{DAA4B4D4-...}">
+      <p14:media r:embed="rId1"><p14:trim st="..." end="..."/></p14:media>
+```
+
+Both relationships point at the same `../media/media1.mp4`. **Counting
+relationships counts every video twice**; `media.ts` groups by shape and
+dedupes by target. The same file is routinely reused on several slides (one
+real deck puts `media1.mp4` on four), so a *file* and a *placement* are
+different things and the model keeps them apart.
+
+- Online video: the same shape, relationship `TargetMode="External"` with a URL.
+  Some decks record only `<p15:webVideoPr embeddedHtml="&lt;iframe src=...">`.
+- Linked local video: External with a `file:///` path. Not in the deck at all.
+- Flash: a `<p:control>` whose `ppt/activeX/*.xml` has the ShockwaveFlash
+  classid and a `Movie` property.
+- Web add-in: `<we:webextensionref>` -> `ppt/webextensions/*.xml`, whose
+  property values carry the URL.
+- Hyperlinks are reported **only** when they lead to a video host or file;
+  every deck has ordinary web links and they are not media.
+- **Layouts and masters carry media too** (the Partner Summit deck has a `.mov`
+  on a layout). It plays on every slide built from that layout, so each slide
+  is read with its layout and master and inherited media is reported against
+  the slide, marked `inheritedFrom`. A layout no slide uses is not in the show
+  and is ignored.
+
+Playback settings come from `<p:timing>`: a `mediacall` effect with
+`cmd="playFrom(…)"` whose `nodeType` is `afterEffect`/`withEffect` starts by
+itself, `clickEffect` is in the click sequence, and no `playFrom` at all means
+the only way to start it is to click the video. Loop is `repeatCount=
+"indefinite"` on the `cMediaNode`'s `cTn`; hide-while-not-playing is
+`showWhenStopped="0"`. **`display="0"` on that `cTn` is NOT hide-while-not-
+playing** — PowerPoint writes it on every media node; reading it that way
+marked every clip in both real decks as hidden.
+
+### Why a second zip reader
+
+`scan.ts` can `unzipSync` with a filter because fonts live in small parts.
+Media cannot: the awards deck is 2 GB. `zipdir.ts` reads the central directory
+and returns `subarray` views for stored (method 0) entries — every video in
+every real deck checked is stored — so probing a 110 MB clip, or handing it
+back to the user, copies nothing. The 2 GB deck scans in ~0.4 s under node.
+
+`rewriteZip()` hides slides by copying every entry's local record (header,
+data, descriptor) verbatim, re-deflating only the replaced slide XML, and
+rebuilding the central directory with patched offsets. It returns chunks, not
+one buffer, so a `Blob` can be built from them without a second copy of the
+deck. A 458 MB deck with seven slides hidden comes back **150 bytes** larger;
+Python's `zipfile.testzip()` passes, and PowerPoint for Mac 16.x opened it with
+no repair prompt and reported exactly the chosen slides hidden (2026-09-28).
+Zip64 is read but not written — `rewriteZip` refuses rather than produce a
+file PowerPoint cannot open.
+
+### The playback verdicts
+
+`mediaprobe.ts` walks MP4/MOV boxes (`moov/trak/mdia/minf/stbl/stsd`, `avcC`,
+`hvcC`, `esds`, `stts`), ASF's header GUID, AVI's `strh`/`avih`, and magic
+numbers for the rest. The Windows/Mac table encodes what Media Foundation and
+AVFoundation can decode, plus Microsoft's published format list. Specifics
+worth knowing:
+
+- H.264 **High 10 / 4:2:2 / 4:4:4** plays on neither. Read the chroma and bit
+  depth from the avcC extension bytes, not the profile alone.
+- H.264 past **4096×2304** is `unknown` on Windows, not `no`: that is the limit
+  Microsoft documents for its decoder, but some GPUs decode past it. The CBRE
+  deck's 7680×2160 LED-wall clip is the real case.
+- HEVC tagged **`hev1`** does not play on the Mac; `hvc1` does. A remux fixes
+  it. Windows needs the HEVC Video Extensions either way.
+- `extension` = only with an optional Store codec pack. Treat as "no" for a
+  venue machine until someone checks; the UI calls it "needs codec pack".
+- These verdicts are from documentation and known decoder support. **None has
+  been confirmed by playing the file in PowerPoint on Windows.**
+
+`test/fixtures/media.pptx` (from `scripts/make-media-deck.mjs`, needs ffmpeg)
+holds one of each case, with show order deliberately different from file order.
 
 ## Notes
 

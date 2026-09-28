@@ -465,3 +465,109 @@ footer {
     justify-content: flex-start;
   }
 }
+
+/* ---------- video & audio ---------- */
+
+section.media {
+  margin-top: 34px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+section.media h2 {
+  font-size: 18px;
+  margin-bottom: 0;
+}
+
+.quiet {
+  color: var(--ink-3);
+}
+
+section.media > p.quiet {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+}
+
+.note ul.online {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note ul.online li {
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.note ul.online .url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin-top: 2px;
+}
+
+.note ul.online .url a {
+  color: inherit;
+}
+
+.note ul.online .why {
+  font-size: 12.5px;
+  margin-top: 3px;
+  opacity: 0.9;
+}
+
+/* A file that will not play somewhere: the one media problem that is red. */
+.row .sub.sub-media-bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+  border-left-color: var(--bad);
+}
+
+.row .sub div + div {
+  margin-top: 3px;
+}
+
+details.hide-slides {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 16px 4px;
+}
+
+details.hide-slides summary {
+  font-weight: 620;
+  cursor: pointer;
+}
+
+details.hide-slides p {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  max-width: 72ch;
+}
+
+.pick {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 14px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.pick label {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  font-size: 13.5px;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.pick label.already {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pick .quiet {
+  font-size: 12.5px;
+}
