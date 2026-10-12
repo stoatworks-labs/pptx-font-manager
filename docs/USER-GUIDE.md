@@ -1,7 +1,7 @@
 # PowerPoint Font Manager user guide
 
-Drop in a `.pptx`. **Find out which fonts it *actually* uses, which of those are installed here,
-and take away a sidecar `.zip` that installs the rest on the machine that needs them.**
+PowerPoint Font Manager tells you which fonts a `.pptx` actually uses and which of those are
+installed here, then builds a sidecar `.zip` that installs the rest on the machine that needs them.
 
 ![The hosted tool with the repo's synthetic test deck loaded: five fonts found, four installed on the machine that took the picture, one family present but not…](screenshots/pptx-font-manager.png)
 
@@ -9,13 +9,13 @@ and take away a sidecar `.zip` that installs the rest on the machine that needs 
 
 Everything happens in the browser. The deck is never uploaded anywhere.
 
-> **Before you rely on this:** the scanner is verified against three real presentations of
-> different provenance — one from Canva, one from Office with embedded fonts, and one 316 MB deck
-> that names almost no fonts explicitly — and its installed/missing verdicts were checked **font by
+> **Before you rely on this:** I've checked the scanner against three real presentations from
+> different places (one from Canva, one from Office with embedded fonts, and a 316 MB deck that
+> names almost no fonts explicitly), and its installed/missing verdicts were checked **font by
 > font** against the operating system's own font list on macOS.
 >
 > **The bundle's Windows installer script has never been run on Windows**; the macOS and Linux ones
-> are syntax-checked but have not been run against a real font install. **Check the bundle on a
+> are syntax-checked but haven't been run against a real font install. **Check the bundle on a
 > spare machine before you rely on it in front of a client.**
 >
 > This codebase was created with AI assistance, directed and reviewed by a human author.
@@ -26,9 +26,9 @@ Everything happens in the browser. The deck is never uploaded anywhere.
 
 **Because you get a wrong answer that looks right.**
 
-Every PowerPoint theme carries a **script fallback table** — a list of fonts to reach for if the
-deck ever contains Japanese, Devanagari, Khmer, Syriac and so on. **It is there whether or not a
-single such character exists in the presentation.**
+Every PowerPoint theme carries a **script fallback table**, a list of fonts to reach for if the
+deck ever contains Japanese, Devanagari, Khmer, Syriac and so on. It's there whether or not a
+single such character exists in the presentation.
 
 Searching a real deck for font references finds **39 fonts. It uses two.** The other 37 are that
 table, and a tool that lists them will send you off to install Mongolian Baiti for a slide that says
@@ -50,53 +50,53 @@ The second half of the problem is that **decks name *faces*, not *families***:
 ## What it does
 
 **Scans** slides, layouts, masters, notes, charts and SmartArt, resolves theme references through
-**the theme the slide actually inherits**, and sorts what it finds by **how much it matters** —
-used on a slide, inherited from a layout or theme, or only present somewhere incidental.
+the theme the slide actually inherits, and sorts what it finds by **how much it matters**: used on
+a slide, inherited from a layout or theme, or only present somewhere incidental.
 
-**Checks what is installed**, using the browser's font-access API where it exists and text-width
+**Checks what's installed**, using the browser's font-access API where it exists and text-width
 measurement everywhere else.
 
-**Finds replacements** across two catalogues — 1,942 Google Fonts families plus 119 more that
-Google does not carry — matched after the name is normalised, with near-matches offered when there
-is no exact one.
+**Finds replacements** across two catalogues (1,942 Google Fonts families, plus 119 more that
+Google doesn't carry), matched after the name is normalised, with near-matches offered when there
+isn't an exact one.
 
 ---
 
 ## Substitutes, and the distinction that matters
 
-**The fonts most often missing are the ones a deck picks up just by being written on Windows or a
-Mac** — Calibri, Cambria, Arial, Times New Roman, Courier New, Georgia. **None may be
+The fonts most often missing are the ones a deck picks up just by being written on Windows or a
+Mac: Calibri, Cambria, Arial, Times New Roman, Courier New, Georgia. **None of them may be
 redistributed** and none are on Google Fonts.
 
 So the app offers **metric-compatible** stand-ins instead: Carlito for Calibri, Caladea for
 Cambria, Arimo for Arial, Tinos for Times New Roman. **These have the same advance widths as the
 original, so line breaks hold and text stays inside its box.**
 
-Where only a **visually similar** face exists — Open Sans for Segoe UI — **it says so plainly.**
-That swap *will* move your line breaks, and being told the deck is fixed when it is not is worse
-than being told the font is missing.
+Where there's only a **visually similar** face (Open Sans for Segoe UI), it tells you so. That
+swap *will* move your line breaks, and being told the deck is fixed when it isn't is worse than
+being told the font is missing.
 
 ---
 
 ## Adobe Fonts, and the failure that looks fine
 
-Adobe fonts **can never be bundled** — Adobe's terms say they are not compatible with workflows
-that transfer font files to another computer, and there is no API that serves the files in any
-case. So for a missing one the app names the reason and links to the family page.
+Adobe fonts **can never be bundled**. Adobe's terms say they aren't compatible with workflows that
+transfer font files to another computer, and there's no API that serves the files anyway. So for a
+missing one the app gives the reason and links to the family page.
 
 **The desktop app also catches the version of this that looks fine**: a font Creative Cloud syncs
-onto your machine is installed *here and nowhere else*, so **the deck renders perfectly for you and
+onto your machine is installed *here and nowhere else*, so **the deck looks perfect for you and
 breaks at the venue.**
 
-It is told apart from an ordinary installed font **by where its file lives** — Adobe keeps synced
-faces in its own folder — which is why *Times New Roman* does not get the warning merely for being
-sold on Adobe Fonts too.
+The app tells it apart from an ordinary installed font **by where its file lives** (Adobe keeps
+synced faces in its own folder), which is why *Times New Roman* doesn't get the warning just for
+being sold on Adobe Fonts too.
 
 ---
 
 ## Embedded fonts
 
-PowerPoint's "embed fonts in the file" **does not store a TTF.** It stores EOT, and what happens
+PowerPoint's "embed fonts in the file" **doesn't store a TTF.** It stores EOT, and what happens
 next depends on who wrote the file:
 
 | Written by | Format | Can it be recovered? |
@@ -104,21 +104,21 @@ next depends on who wrote the file:
 | PowerPoint | EOT + MicroType Express | **No** — the glyph data is compressed |
 | Canva, LibreOffice | EOT, uncompressed | **Yes** — extracted as a valid TTF |
 
-**Either way the font travels with the deck**, so it will render wherever the `.pptx` goes. The
+**Either way the font travels with the deck**, so it'll render wherever the `.pptx` goes. The
 distinction only matters for what can go in the bundle.
 
 ---
 
 ## The bundle, and the two traps it heads off
 
-There is no such thing as a single self-extracting archive that runs on every OS, so the bundle is
+There's no such thing as a single self-extracting archive that runs on every OS, so the bundle is
 a plain `.zip` with **one small script per platform**, a manifest saying where each font came from
-and under what licence, and a README covering the two ways these normally fail:
+and under what licence, and a README covering the two ways these usually go wrong:
 
 - **macOS Gatekeeper.** Anything extracted from a downloaded zip inherits a quarantine flag, and
   double-clicking the installer gets "cannot be opened because it is from an unidentified
-  developer". **That is not a broken script.** The README gives both ways through, plus the
-  no-script route of dropping the fonts on Font Book.
+  developer". **That doesn't mean the script's broken.** The README gives both ways through, plus
+  the no-script route of dropping the fonts on Font Book.
 - **Windows Mark-of-the-Web.** PowerShell refuses to run a script that came out of a downloaded
   archive, for the same reason.
 
@@ -131,30 +131,30 @@ The installers write to the **per-user font directory**, so no administrator pas
 Below the fonts, the app lists the deck's video and sound.
 
 - **Each embedded file**, with its codec, resolution, frame rate and length, the
-  slides it plays on, and how it is set to play (automatically or on click,
+  slides it plays on, and how it's set to play (automatically or on click,
   looping, full screen, volume). Two pills say whether PowerPoint will play it on
   **Windows** and on the **Mac**. "Needs codec pack" means an optional Microsoft
-  Store extension (HEVC, AV1, VP9) — assume the venue machine does not have it.
-  "Check it" means it may play and may not; try it on the show machine.
+  Store extension (HEVC, AV1, VP9); assume the venue machine hasn't got it.
+  "Check it" means it might play and might not, so try it on the show machine.
 - **Anything that needs the internet**, in red: online videos, web add-ins,
   Flash objects and links to video sites. Streaming sites are often blocked on
   venue networks. SharePoint, Stream and OneDrive for work also need PowerPoint
   signed in to an account with access. The fix is the same for all of them:
   download the video and insert it as a file.
 - **Linked videos**: the deck records a path on the author's computer instead of
-  holding the file. They play only if the file is at that same path on the show
+  holding the file. They only play if the file is at that same path on the show
   machine.
 
 **Save** takes one file out; **Save all** gives you a zip of every file, named
 by slide, plus `MEDIA.txt` listing which slide each belongs to and its playback
-settings. The files are exactly what is inside the deck. If a clip was trimmed
-in PowerPoint, the saved file is the full original — the trim is listed in
-`MEDIA.txt`.
+settings. The files are byte for byte what's inside the deck. If a clip was
+trimmed in PowerPoint, the saved file is the full original, and the trim is
+listed in `MEDIA.txt`.
 
 **Hide the slides that play media** is for shows where video runs from a media
 server or playback machine instead of PowerPoint. Tick the slides (the ones with
 video are ticked for you), then download a copy with them hidden. The slides are
-still in the deck, just skipped in the slideshow, and your original file is not
+still in the deck, just skipped in the slideshow, and your original file isn't
 changed.
 
 ---
