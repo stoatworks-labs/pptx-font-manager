@@ -14,7 +14,8 @@ Everything happens in the browser. The deck is never uploaded anywhere.
 > names almost no fonts explicitly), and its installed/missing verdicts were checked **font by
 > font** against the operating system's own font list on macOS.
 >
-> **The bundle's Windows installer script has never been run on Windows**; the macOS and Linux ones
+> **The bundle's Windows installer has been run end to end on Windows 11**, which is how I caught
+> it unregistering every other per-user font on the machine (fixed since). The macOS and Linux ones
 > are syntax-checked but haven't been run against a real font install. **Check the bundle on a
 > spare machine before you rely on it in front of a client.**
 >

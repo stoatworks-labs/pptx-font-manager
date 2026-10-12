@@ -255,9 +255,9 @@ npm run desktop:dev      # run it
 npm run desktop:build    # .app / .dmg / .msi / .deb / .AppImage
 ```
 
-> **macOS and Linux only, so far.** The Windows install path is written but has
-> never been run on Windows, and the same goes for Linux. See
-> [AGENTS.md](AGENTS.md) §9 for what is and isn't verified.
+> **Tested on macOS only, so far.** The Windows and Linux install paths are
+> written but have never been run. See [AGENTS.md](AGENTS.md) §9 for what is
+> and isn't verified.
 
 ## Development
 
