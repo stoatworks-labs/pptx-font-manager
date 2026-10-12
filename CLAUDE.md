@@ -8,7 +8,7 @@ Command reference. For the model, the invariants and the traps, read
 ```bash
 npm install
 npm run dev          # vite dev server
-npm test             # vitest — 125 tests, offline (5 network-gated, see below)
+npm test             # vitest — 167 tests, offline (5 network-gated, see below; 13 need the private fixture decks)
 npm run test:watch
 npm run build        # tsc -b && vite build -> dist/
 npm run preview      # serve the built dist/ (does NOT apply _headers)

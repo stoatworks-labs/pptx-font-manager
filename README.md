@@ -252,7 +252,7 @@ rather than overwritten.
 
 ```bash
 npm run desktop:dev      # run it
-npm run desktop:build    # .app / .dmg / .msi / .deb / .AppImage
+npm run desktop:build    # .app / .dmg / NSIS .exe / .deb / .AppImage
 ```
 
 > **Tested on macOS only, so far.** The Windows and Linux install paths are
