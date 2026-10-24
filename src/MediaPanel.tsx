@@ -10,18 +10,22 @@ import {
 } from './core/media'
 import { describeProbe, type Playback } from './core/mediaprobe'
 import { storedZip } from './core/zipdir'
+import { videosToFetch } from './core/localvideo'
+import { VideoFetchPanel } from './VideoFetchPanel'
 
 /**
  * The deck's video and sound: what is in it, whether it will play on the
  * show machine, what needs the internet, and two ways to take the media out
  * of PowerPoint's hands — save the files, and hide the slides that hold them.
+ * On the desktop, a third: download the online videos and embed them.
  *
  * Everything here works on the deck already in memory. Nothing is uploaded,
  * and the saved files and the rewritten deck are views into the original
  * bytes wherever the zip format allows.
  */
 
-type SaveParts = (parts: Uint8Array[], filename: string, type: string) => void
+/** Hands a file over: a download in the browser, a Save dialog on the desktop. Resolves to where it went, when known. */
+type SaveParts = (parts: Uint8Array[], filename: string, type: string) => Promise<string | null | void>
 
 const PLAY_LABEL: Record<Playback, string> = {
   yes: 'plays',
@@ -77,6 +81,7 @@ export function MediaPanel({
   media,
   deck,
   deckName,
+  desktop,
   busy,
   setBusy,
   setError,
@@ -85,12 +90,15 @@ export function MediaPanel({
   media: MediaScanResult
   deck: Uint8Array
   deckName: string
+  desktop: boolean
   busy: boolean
   setBusy: (s: string | null) => void
   setError: (s: string | null) => void
   save: SaveParts
 }) {
   const names = useMemo(() => mediaFilenames(media), [media])
+  const fetchable = useMemo(() => videosToFetch(media).fetch.length, [media])
+  const [savedTo, setSavedTo] = useState<string | null>(null)
   const videos = media.files.filter((f) => f.kind === 'video')
   const sounds = media.files.filter((f) => f.kind === 'audio')
   const online = media.placements.filter(
@@ -136,54 +144,58 @@ export function MediaPanel({
   const stem = deckName.replace(/\.(pptx|potx|ppsx)$/i, '')
   const ext = deckName.match(/\.(pptx|potx|ppsx)$/i)?.[0] ?? '.pptx'
 
-  const saveOne = (f: EmbeddedMediaFile) => {
+  const saveOne = async (f: EmbeddedMediaFile) => {
     setError(null)
+    setSavedTo(null)
     try {
-      save([mediaBytes(deck, f.part)], names.get(f.part)!, 'application/octet-stream')
+      setSavedTo((await save([mediaBytes(deck, f.part)], names.get(f.part)!, 'application/octet-stream')) || null)
     } catch (e) {
-      setError((e as Error).message)
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
 
-  const saveAll = () => {
+  // Let the busy line paint before the synchronous work starts.
+  const nextFrame = () => new Promise((r) => setTimeout(r, 30))
+
+  const saveAll = async () => {
     setError(null)
+    setSavedTo(null)
     setBusy(`Packing ${media.files.length} file${media.files.length === 1 ? '' : 's'}…`)
-    // Let the busy line paint before the synchronous work starts.
-    setTimeout(() => {
-      try {
-        const files: Array<{ name: string; data: Uint8Array; crc?: number }> = media.files.map((f) => ({
-          name: names.get(f.part)!,
-          data: mediaBytes(deck, f.part),
-          crc: f.crc,
-        }))
-        files.push({ name: 'MEDIA.txt', data: new TextEncoder().encode(manifest(media, names, deckName)) })
-        save(storedZip(files), `${stem} - media.zip`, 'application/zip')
-      } catch (e) {
-        setError((e as Error).message)
-      } finally {
-        setBusy(null)
-      }
-    }, 30)
+    await nextFrame()
+    try {
+      const files: Array<{ name: string; data: Uint8Array; crc?: number }> = media.files.map((f) => ({
+        name: names.get(f.part)!,
+        data: mediaBytes(deck, f.part),
+        crc: f.crc,
+      }))
+      files.push({ name: 'MEDIA.txt', data: new TextEncoder().encode(manifest(media, names, deckName)) })
+      setSavedTo((await save(storedZip(files), `${stem} - media.zip`, 'application/zip')) || null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(null)
+    }
   }
 
-  const saveHidden = () => {
+  const saveHidden = async () => {
     setError(null)
+    setSavedTo(null)
     const parts = mediaSlides.filter((s) => pick.has(s.slide.number)).map((s) => s.slide.part)
     if (parts.length === 0) return
     setBusy(`Hiding ${parts.length} slide${parts.length === 1 ? '' : 's'}…`)
-    setTimeout(() => {
-      try {
-        save(
-          hideSlides(deck, parts),
-          `${stem} (media slides hidden)${ext}`,
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        )
-      } catch (e) {
-        setError((e as Error).message)
-      } finally {
-        setBusy(null)
-      }
-    }, 30)
+    await nextFrame()
+    try {
+      const where = await save(
+        hideSlides(deck, parts),
+        `${stem} (media slides hidden)${ext}`,
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      )
+      setSavedTo(where || null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(null)
+    }
   }
 
   if (media.placements.length === 0 && media.warnings.length === 0) {
@@ -266,6 +278,30 @@ export function MediaPanel({
               )
             })}
           </ul>
+          {fetchable > 0 && !desktop && (
+            <div className="why">
+              The desktop app can download {fetchable === 1 ? 'it' : 'these'} and save a copy of the
+              deck with {fetchable === 1 ? 'it' : 'them'} embedded.
+            </div>
+          )}
+        </div>
+      )}
+
+      {fetchable > 0 && desktop && (
+        <VideoFetchPanel
+          media={media}
+          deck={deck}
+          deckName={deckName}
+          busy={busy}
+          setBusy={setBusy}
+          setError={setError}
+          save={save}
+        />
+      )}
+
+      {savedTo && (
+        <div className="note info">
+          <strong>Saved.</strong> {savedTo}
         </div>
       )}
 
@@ -290,7 +326,7 @@ export function MediaPanel({
       {media.files.length > 0 && (
         <>
           <div className="bar">
-            <button onClick={saveAll} disabled={busy}>
+            <button onClick={() => void saveAll()} disabled={busy}>
               Save all {media.files.length} file{media.files.length === 1 ? '' : 's'} (.zip,{' '}
               {formatBytes(totalSize)})
             </button>
@@ -342,7 +378,7 @@ export function MediaPanel({
             ))}
           </div>
           <div className="bar">
-            <button className="primary" onClick={saveHidden} disabled={busy || pick.size === 0}>
+            <button className="primary" onClick={() => void saveHidden()} disabled={busy || pick.size === 0}>
               Download copy with {pick.size} slide{pick.size === 1 ? '' : 's'} hidden
             </button>
             <button onClick={() => setPick(defaultPick())} disabled={busy}>

@@ -8,7 +8,7 @@ Command reference. For the model, the invariants and the traps, read
 ```bash
 npm install
 npm run dev          # vite dev server
-npm test             # vitest — 167 tests, offline (5 network-gated, see below; 13 need the private fixture decks)
+npm test             # vitest — 176 tests, offline (5 network-gated, see below; 13 need the private fixture decks)
 npm run test:watch
 npm run build        # tsc -b && vite build -> dist/
 npm run preview      # serve the built dist/ (does NOT apply _headers)
@@ -20,6 +20,18 @@ Network-dependent tests are opt-in — they hit the real google/fonts repo:
 
 ```bash
 NETWORK_TESTS=1 npm test
+```
+
+Online video on the desktop (AGENTS.md §13) has two probes that run the app's
+own Rust without the app, and a debug build takes two hooks that reach past the
+Open and Save panels, which UI automation cannot drive:
+
+```bash
+cd src-tauri && cargo run --example fetch_probe -- <empty dir>         # fetch yt-dlp, ffmpeg, Deno, checksum-checked
+cd src-tauri && cargo run --example download_probe -- <tools dir> <out dir> <url> [height]
+npx tauri build --debug --bundles app
+env -i HOME=$HOME PATH=/usr/bin:/bin PFM_DEBUG_OPEN=<deck> PFM_DEBUG_SAVE_DIR=<dir> \
+  "src-tauri/target/debug/bundle/macos/PowerPoint Font Manager.app/Contents/MacOS/pptx-font-manager"
 ```
 
 ## Regenerating the font catalogues
@@ -94,9 +106,15 @@ the same Worker is worse than one.
 - **Read OOXML booleans with `onOff()`, never `=== '1'`.** Office writes `1`,
   Canva writes `true`; a strict test loses every Canva deck silently.
 - Test fixtures are private decks and stay gitignored — except the two
-  generated ones, `synthetic.pptx` and `media.pptx`, which are committed.
+  generated ones, `synthetic.pptx` and `media.pptx`, and `online-video.pptx`,
+  made in PowerPoint for Mac from a CC-BY video, which are committed.
   Regenerate the media one with `node scripts/make-media-deck.mjs` (needs
   ffmpeg; the suite does not).
+- **Never bundle yt-dlp, ffmpeg or Deno.** Fetch the publisher's release and
+  check the published SHA-256 first, and only ever replace the app's own copy.
+  See AGENTS.md §13.
+- **Pass ffmpeg and Deno to yt-dlp by path.** A Finder-launched app has a bare
+  PATH and so does every yt-dlp it starts.
 - **Media never goes through `unzipSync`.** Read it with `zipdir.ts`, which
   returns views into the deck for stored entries. A real show deck is 2 GB of
   video. See AGENTS.md §12.

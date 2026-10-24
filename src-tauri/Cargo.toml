@@ -28,6 +28,8 @@ serde_json = "1"
 font-kit = "0.14"
 
 dirs = "7"
+sha2 = "0.10"
+zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Writing a file into ~/Library/Fonts does make macOS pick it up, but only

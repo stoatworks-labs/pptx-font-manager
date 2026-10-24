@@ -466,8 +466,25 @@ Verified working, end to end:
   the same process
 - install guards: HTML error page refused, path traversal refused, existing
   file skipped rather than overwritten
+- **online video to embedded** (§13), 2026-10-24, debug build launched with a
+  bare PATH: yt-dlp and Deno fetched and checksum-checked from the app,
+  Homebrew's ffmpeg found anyway, Big Buck Bunny downloaded at 1080p with
+  live progress, probed, and a 269 MB copy of the deck saved through the
+  chunked save — `testzip` clean, no online video left, slide 2 trimmed to
+  95 s. The same rewrite, with a 720p download, was opened and played in
+  PowerPoint for Mac 16.x.
 
 **Not verified:**
+
+- The online-video path on **Windows and Linux**: tool discovery, the
+  FFmpeg-Builds archives (the Linux one needs `tar -xJf`), `taskkill` on
+  Cancel, and playback of the result in PowerPoint for Windows.
+- The real **Save dialog** on the desktop. Every desktop save (the embedded
+  copy, one media file, the media zip, the hidden-slides copy) was run in the
+  debug app through `PFM_DEBUG_SAVE_DIR`, so the chunked write and the rename
+  are exercised; the dialog in front of them is not.
+- The 1080p embedded deck was checked by `testzip` and the probe, not opened in
+  PowerPoint; the 720p one was.
 
 - **The desktop app's Rust `register_font` has never run on Windows.** The
   bundle's `install-fonts.ps1` now has (see §8.2b), and the two share a
@@ -750,6 +767,8 @@ different things and the model keeps them apart.
 
 - Online video: the same shape, relationship `TargetMode="External"` with a URL.
   Some decks record only `<p15:webVideoPr embeddedHtml="&lt;iframe src=...">`.
+  PowerPoint for Mac writes neither extension, only `<a:videoFile r:link>` — see
+  §13, which also turns them into embedded files.
 - Linked local video: External with a `file:///` path. Not in the deck at all.
 - Flash: a `<p:control>` whose `ppt/activeX/*.xml` has the ShockwaveFlash
   classid and a `Movie` property.
@@ -812,6 +831,131 @@ worth knowing:
 
 `test/fixtures/media.pptx` (from `scripts/make-media-deck.mjs`, needs ffmpeg)
 holds one of each case, with show order deliberately different from file order.
+
+---
+
+## 13. Online video: download it and embed it (desktop only)
+
+The desktop build can take a deck's online videos, download them with yt-dlp,
+and save a copy of the deck that plays them from inside the file.
+`src/core/localvideo.ts` rewrites the deck; `src-tauri/src/video.rs` finds,
+fetches and runs the tools and writes the file; `src/VideoFetchPanel.tsx` is
+the UI. The web build only says the desktop app can do it: a browser can
+neither run yt-dlp nor fetch from YouTube.
+
+### What PowerPoint for Mac writes, before and after
+
+`test/fixtures/online-video.pptx` was made in PowerPoint for Mac 16.x with
+Insert ▸ Video ▸ Online Film, twice (Big Buck Bunny, CC-BY, by its watch URL
+and by `youtu.be/…?t=95`). It is committed, unlike the real-world fixtures.
+PowerPoint wrote **less** than §12's synthetic shape:
+
+```xml
+<p:nvPr><a:videoFile r:link="rId1"/></p:nvPr>          <!-- no extLst at all -->
+rId1  .../relationships/video  https://www.youtube.com/embed/ID?start=95&feature=oembed  External
+```
+
+The `t=95` became `start=95` in the embed URL. The poster frame is the YouTube
+thumbnail (one jpeg shared by both slides), `descr` holds the video's title,
+and the timing tree already has the same `playFrom`/`togglePause` mediacall
+nodes a local video gets. So the conversion is three edits per part: point the
+video relationship at `../media/mediaN.mp4`, add the `.../2007/relationships/media`
+relationship PowerPoint expects beside it, and add the `p14:media r:embed`
+extension (`{DAA4B4D4-…}`). Any `p15:webVideoPr` extension goes: a shape
+carrying an embed code is still online as far as PowerPoint cares. Shapes
+recorded *only* as an embed code (`embedCodeOnly` in `media.ts`) have no
+relationship to repoint and are left, with a reason.
+
+A start time in the link becomes `<p14:trim st="95000"/>`, which is what the
+online video did. **YouTube's `end=` is not mapped**: what `p14:trim end`
+measures (a time, or an amount off the end) has not been checked in
+PowerPoint, and a guess would cut the wrong part of someone's clip.
+
+Verified in PowerPoint for Mac 16.x on 2026-10-24 with a real 720p download:
+opens with no repair prompt, the shape gets the local-media controller and the
+full Playback tab (Trim Video, bookmarks, fades), it plays, and slide 2's Trim
+dialog starts at 1:35.000.
+
+### Three tools, and what each buys
+
+Measured against YouTube on 2026-10-24 with yt-dlp 2026.10.21:
+
+| yt-dlp with      | What comes back |
+| ---------------- | --------------- |
+| nothing          | separate picture and sound only — nothing PowerPoint can play |
+| Deno             | one combined 360p file (format 18) |
+| ffmpeg           | H.264 up to 1080p + AAC, joined by ffmpeg; yt-dlp warns that YouTube without a JS runtime is deprecated |
+| Deno and ffmpeg  | the same, without the warning |
+
+**YouTube no longer serves format 18 without a JS runtime**, so the old "no
+ffmpeg, take the 360p MP4" fallback returns nothing at all unless Deno is
+there. H.264 stops at 1080p; above it YouTube has only VP9 and AV1, which
+PowerPoint for Mac cannot decode, so the quality menu stops at 1080p.
+
+The format selector prefers **stereo** AAC: for some videos YouTube's "best"
+AAC is 5.1 (format 258), which a laptop then downmixes into the venue's PA on
+its own terms.
+
+### Where the tools come from
+
+None is bundled. yt-dlp goes stale in weeks, and a binary inside a signed .app
+cannot update itself without breaking the signature. "Get" downloads the
+publisher's own release and checks it against the SHA-256 published beside it:
+
+| Tool   | Source | Checksum |
+| ------ | ------ | -------- |
+| yt-dlp | `github.com/yt-dlp/yt-dlp` latest release | `SHA2-256SUMS` |
+| Deno   | `github.com/denoland/deno` latest release | `<asset>.sha256sum` |
+| ffmpeg, Windows/Linux | `github.com/yt-dlp/FFmpeg-Builds` `latest` | `checksums.sha256` |
+| ffmpeg, macOS | `ffmpeg.martin-riedl.de` (signed, GPL, x264) | `<resolved file>.sha256` |
+
+Martin Riedl's `redirect/latest/…` URL answers HEAD with a 404 and GET with a
+307 to the real file. The checksum lives beside the *resolved* file, not the
+redirect (`redirect/…/ffmpeg.zip.sha256` is a 404), so the 307 is followed by
+hand. Downloads go through the system curl, so no HTTP stack is linked in.
+Fetched copies live in `<app data>/tools` and are the only ones the app will
+replace; a staged copy that will not run `--version` is refused before it
+replaces a working one.
+
+### Traps
+
+- **A Finder-launched app gets a bare PATH** (`/usr/bin:/bin:/usr/sbin:/sbin`).
+  Homebrew's `/opt/homebrew/bin` has to be searched by name, and yt-dlp run
+  from the app cannot find ffmpeg or Deno on its own either, so they are
+  passed by path (`--ffmpeg-location`, `--js-runtimes deno:<path>`). Test with
+  `env -i … PATH=/usr/bin:/bin`, not from a shell.
+- **`--print` implies `--quiet`**, which silences the progress template.
+  `--progress` brings it back. Without it the UI sits on "Starting…" for the
+  whole download.
+- yt-dlp's standalone build unpacks itself on **every** start: about ten
+  seconds on an M-series Mac before it does anything. Version checks get a
+  long timeout and the UI says "Starting…" meanwhile.
+- `--js-runtimes` only exists from yt-dlp 2025.11.12; an older one is not
+  passed it.
+- yt-dlp runs in its own process group so **Cancel** also stops the ffmpeg it
+  started.
+
+### Saving
+
+On the desktop every save in the media panel goes through `saveFile()`: the
+platform's Save dialog, then the deck's chunks (most of them views into the
+original, §12) cross to Rust as raw IPC bodies, a 32 MB slice at a time, into a
+temporary file beside the destination that is renamed over it only at the end.
+A view passed to `invoke` sends only its own bytes (Tauri's IPC hands it to
+`fetch` as the body), so a 2 GB deck is never copied into one buffer.
+
+### Testing it
+
+- `test/localvideo.test.ts`: the rewrite against both fixtures, every CRC.
+- `cargo run --example fetch_probe -- <empty dir>`: all three tools through the
+  real fetch path, including the macOS ffmpeg redirect.
+- `cargo run --example download_probe -- <tools dir> <out dir> <url> [height]`:
+  the app's own yt-dlp run, without the app.
+- The Open and Save panels run in a separate macOS process that UI automation
+  may not drive. A **debug** build takes `PFM_DEBUG_OPEN=<deck>` (load at
+  start) and `PFM_DEBUG_SAVE_DIR=<folder>` (save without asking); release
+  builds compile both out. Launch the binary inside the debug `.app` so it has
+  a bundle id, and use `env -i` for a Finder-like PATH.
 
 ## Notes
 

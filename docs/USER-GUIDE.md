@@ -158,6 +158,36 @@ video are ticked for you), then download a copy with them hidden. The slides are
 still in the deck, just skipped in the slideshow, and your original file isn't
 changed.
 
+### Embedding online videos (desktop app)
+
+In the desktop app, a deck with online videos gets one more box under the red
+one: **Download them and embed them in a copy**.
+
+1. **Get the tools.** It lists yt-dlp, ffmpeg and Deno, and whether it found
+   each. **Get** (or **Get all**) fetches the missing ones from their
+   publishers' own releases, checks each against its published checksum, and
+   keeps it in the app's own folder. If you already have them from Homebrew or
+   winget, it uses those. All three matter for YouTube: without ffmpeg there's
+   nothing PowerPoint can play, and without Deno you get 360p at best.
+2. **Pick the videos and the size.** Each video is listed once, however many
+   slides use it. Up to 1080p is the default and the ceiling: above that,
+   YouTube only offers formats PowerPoint for Mac can't decode.
+3. **Download and save.** Progress shows as it goes. When it's done you choose
+   where the copy goes; the original deck isn't touched.
+
+The copy plays the video from inside the file, where the online video was, with
+the same thumbnail and click-to-play. A link with a start time (`?t=95`)
+becomes a trim, so the slide starts in the same place and the rest of the
+video is still there. Each download gets the same Windows/Mac verdict as any
+other video.
+
+Videos that need a sign-in (SharePoint, Stream, OneDrive for work), Stream
+(Classic), and anything that isn't an online-video shape (a hyperlink, a web
+add-in, a Flash object) are left alone, and the box says why.
+
+Only download videos you have the right to show. YouTube's terms don't allow
+downloading except where YouTube itself offers a download link.
+
 ---
 
 ## If something is wrong
@@ -172,3 +202,4 @@ changed.
 | **An Adobe font is not offered** | It cannot be bundled. Activate it through Creative Cloud on the target machine. |
 | **A video says "will not play"** | Its codec is an editing or camera format. Re-encode it as MP4, H.264, 8-bit, with AAC sound — that plays everywhere. |
 | **A video plays here and not at the venue** | Check the Windows pill: HEVC needs a codec pack there, ProRes does not play at all. Or it needs the internet — see the red box. |
+| **A YouTube download fails, or comes back at 360p** | yt-dlp is out of date (YouTube changes weekly; press **Update**), or Deno or ffmpeg is missing. |

@@ -102,6 +102,11 @@ export type MediaPlacement =
       online: OnlineInfo
       /** How the deck reaches it. */
       via: 'online-video' | 'add-in' | 'flash' | 'hyperlink'
+      /**
+       * Recorded only as an `<iframe>` embed code, with no relationship
+       * behind it — nothing `embedOnlineVideos` can repoint at a file.
+       */
+      embedCodeOnly?: boolean
     })
 
 export interface EmbeddedMediaFile {
@@ -302,6 +307,7 @@ export function scanMedia(file: Uint8Array): MediaScanResult {
           playback,
           ...extra,
           source: 'online',
+          embedCodeOnly: true,
           url: shape.webUrl,
           online: classifyUrl(shape.webUrl),
           via: 'online-video',

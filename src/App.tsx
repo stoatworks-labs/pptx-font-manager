@@ -31,6 +31,7 @@ import {
   readInstalledFontFile,
   type InstallReport,
 } from './platform/native'
+import { debugOpenDeck, saveFile } from './platform/video'
 import type { EmbeddedFont, ScanResult } from './core/types'
 
 declare const __APP_VERSION__: string
@@ -60,7 +61,7 @@ function download(data: Uint8Array, filename: string) {
  * built from those directly. The revoke waits longer than `download`'s: a
  * 2 GB deck takes a while to hand over.
  */
-function downloadParts(parts: Uint8Array[], filename: string, type: string) {
+async function downloadParts(parts: Uint8Array[], filename: string, type: string): Promise<void> {
   const url = URL.createObjectURL(new Blob(parts as BlobPart[], { type }))
   const a = document.createElement('a')
   a.href = url
@@ -69,6 +70,18 @@ function downloadParts(parts: Uint8Array[], filename: string, type: string) {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/**
+ * The desktop's version: the platform's own Save dialog, so the user picks
+ * where a 2 GB deck goes rather than finding it in Downloads. Resolves to the
+ * path, or null if they cancelled.
+ */
+function saveDesktop(parts: Uint8Array[], filename: string): Promise<string | null> {
+  const ext = filename.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? ''
+  const name =
+    ext === 'zip' ? 'Zip archive' : /^(pptx|potx|ppsx)$/.test(ext) ? 'PowerPoint presentation' : `${ext.toUpperCase()} file`
+  return saveFile(parts, filename, { name, ext })
 }
 
 export default function App() {
@@ -139,6 +152,14 @@ export default function App() {
     },
     [refreshInventory],
   )
+
+  // Debug desktop builds can be handed a deck at start — see debugOpenDeck.
+  useEffect(() => {
+    if (!desktop) return
+    debugOpenDeck()
+      .then((f) => f && handleFile(f))
+      .catch(() => {})
+  }, [desktop, handleFile])
 
   const resolved: ResolvedFont[] = useMemo(
     () => (scan ? resolveAll(scan.fonts, inventory) : []),
@@ -674,10 +695,11 @@ export default function App() {
               media={media}
               deck={deckRef.current}
               deckName={deckName}
+              desktop={desktop}
               busy={!!busy}
               setBusy={setBusy}
               setError={setError}
-              save={downloadParts}
+              save={desktop ? saveDesktop : downloadParts}
             />
           )}
         </>

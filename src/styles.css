@@ -571,3 +571,35 @@ details.hide-slides p {
 .pick .quiet {
   font-size: 12.5px;
 }
+
+/* ---------- downloading online video (desktop) ---------- */
+
+.video-fetch {
+  margin: 4px 0 18px;
+}
+
+.video-fetch h3 {
+  font-size: 15px;
+  font-weight: 640;
+  margin: 0 0 4px;
+}
+
+.video-fetch > p.quiet {
+  font-size: 13px;
+  max-width: 74ch;
+  margin: 0 0 12px;
+}
+
+.video-fetch .pick label > span {
+  min-width: 0;
+}
+
+.video-fetch .pick code {
+  font-size: 11.5px;
+  word-break: break-all;
+}
+
+.video-fetch select {
+  font: inherit;
+  font-size: 13px;
+}

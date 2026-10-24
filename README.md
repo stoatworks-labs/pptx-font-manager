@@ -228,6 +228,30 @@ straight across, so a 458 MB deck comes back 150 bytes larger. I checked it by
 opening the result in PowerPoint for Mac: no repair prompt, and the chosen slides
 hidden, no more and no fewer. Your original file is never modified.
 
+**Or bring the online ones home** (desktop app only). An online video is a
+link to YouTube with a thumbnail on top, which is a fine thing to have right up
+until the venue Wi-Fi turns out to be a rumour. The desktop app downloads each
+one with [yt-dlp](https://github.com/yt-dlp/yt-dlp) and saves a copy of the
+deck with the file embedded where the link was: same position, same thumbnail,
+same click-to-play, and if the link started at 1:35 the slide does too (as a
+PowerPoint trim, so the whole video is still there if you change your mind).
+It asks YouTube for H.264 and AAC at up to 1080p, the one combination both
+PowerPoints play, and checks what came back with the same verdicts as above.
+
+yt-dlp needs two helpers for YouTube: ffmpeg, to join the picture and sound
+YouTube sends separately, and Deno, to answer YouTube's script checks. The app
+uses copies you already have (Homebrew, winget and friends) or fetches each
+from its publisher's own release, checks it against the published checksum,
+and keeps it in its own folder. None is bundled: yt-dlp needs updating every
+few weeks, and an app can't update what's sealed inside it.
+
+I checked this with a deck made in PowerPoint for Mac: the result opens with no
+repair prompt, PowerPoint treats the video as an ordinary embedded file
+(Playback tab, Trim Video and all), it plays, and the slide whose link said
+`?t=95` starts at 1:35. Only download videos you have the right to show:
+YouTube's terms don't allow downloading except where YouTube offers a download
+link, and that's between you and YouTube.
+
 Video on a slide layout or master plays on every slide built from it, and is
 reported against each of those slides.
 
@@ -250,14 +274,20 @@ Fonts go to your own account (`~/Library/Fonts`,
 administrator password is needed, and anything already installed is skipped
 rather than overwritten.
 
+The same goes for the deck's online videos: it can download them and save a
+copy of the deck with them embedded (see [Video and audio](#video-and-audio)),
+which no browser can do either. Anything it saves goes through the platform's
+own Save dialog, so a 2 GB deck lands where you put it rather than in
+Downloads.
+
 ```bash
 npm run desktop:dev      # run it
 npm run desktop:build    # .app / .dmg / NSIS .exe / .deb / .AppImage
 ```
 
-> **Tested on macOS only, so far.** The Windows and Linux install paths are
-> written but have never been run. See [AGENTS.md](AGENTS.md) §9 for what is
-> and isn't verified.
+> **Tested on macOS only, so far.** The Windows and Linux install paths, and the
+> online-video download on both, are written but have never been run. See
+> [AGENTS.md](AGENTS.md) §9 for what is and isn't verified.
 
 ## Development
 

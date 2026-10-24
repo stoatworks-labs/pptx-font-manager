@@ -208,14 +208,24 @@ function localRecordLength(file: Uint8Array, e: ZipEntry): number {
   return end - e.localOffset
 }
 
+/** A file to store uncompressed. `crc` saves recomputing one already known. */
+export interface StoredFile {
+  name: string
+  data: Uint8Array
+  crc?: number
+}
+
 /**
- * Rewrite an archive with some parts replaced.
+ * Rewrite an archive with some parts replaced, and optionally some added.
  *
  * Every other entry is copied byte for byte — header, data, descriptor — so
  * media, fonts and everything PowerPoint put there come out identical.
  * Replaced entries are deflated afresh. The central directory is rebuilt from
  * the original records with offsets (and, for replaced parts, the CRC, sizes
  * and method) patched.
+ *
+ * Added entries are stored, not deflated, and go after everything else: they
+ * are videos, which are compressed already and which PowerPoint itself stores.
  *
  * Returns the archive as a list of chunks, most of them views into `file`,
  * because concatenating a 2 GB deck into one new buffer would double the
@@ -225,6 +235,7 @@ export function rewriteZip(
   file: Uint8Array,
   dir: ZipDirectory,
   replace: Map<string, Uint8Array>,
+  add: StoredFile[] = [],
 ): Uint8Array[] {
   if (dir.zip64) {
     throw new Error(
@@ -234,6 +245,11 @@ export function rewriteZip(
   }
   for (const name of replace.keys()) {
     if (!dir.byName.has(name)) throw new Error(`No part named ${name} to replace.`)
+  }
+  const adding = new Set<string>()
+  for (const f of add) {
+    if (dir.byName.has(f.name) || adding.has(f.name)) throw new Error(`There is already a part named ${f.name}.`)
+    adding.add(f.name)
   }
 
   const out: Uint8Array[] = []
@@ -277,6 +293,18 @@ export function rewriteZip(
     patched.set(e, { crc, csize: deflated.length, size: data.length, flags })
   }
 
+  const addedCentral: Uint8Array[] = []
+  const { time, date } = dosNow()
+  for (const f of add) {
+    if (offset > LIMIT_32 || f.data.length > LIMIT_32) {
+      throw new Error('The rewritten presentation would need zip64 (over 4 GB), which is not supported.')
+    }
+    const { head, cen } = storedRecords(f, offset, time, date)
+    out.push(head, f.data)
+    addedCentral.push(cen)
+    offset += head.length + f.data.length
+  }
+
   const cdStart = offset
   for (const e of dir.entries) {
     const rec = new Uint8Array(file.subarray(e.centralOffset, e.centralOffset + e.centralLength))
@@ -295,9 +323,62 @@ export function rewriteZip(
     out.push(rec)
     offset += rec.length
   }
+  for (const cen of addedCentral) {
+    out.push(cen)
+    offset += cen.length
+  }
 
-  out.push(endRecord(dir.entries.length, offset - cdStart, cdStart))
+  out.push(endRecord(dir.entries.length + add.length, offset - cdStart, cdStart))
   return out
+}
+
+function dosNow(): { time: number; date: number } {
+  const now = new Date()
+  return {
+    time: (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1),
+    date: ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate(),
+  }
+}
+
+/** Local header and central record for one stored (method 0) entry at `offset`. */
+function storedRecords(
+  f: StoredFile,
+  offset: number,
+  time: number,
+  date: number,
+): { head: Uint8Array; cen: Uint8Array } {
+  const name = new TextEncoder().encode(f.name)
+  // A file lifted out of the deck already has its CRC in the deck's own
+  // directory; recomputing it over 2 GB of video is seconds of nothing.
+  const crc = f.crc ?? crc32(f.data)
+  const head = new Uint8Array(30 + name.length)
+  put32(head, 0, SIG_LOCAL)
+  put16(head, 4, 20)
+  put16(head, 6, 0x0800)
+  put16(head, 8, 0)
+  put16(head, 10, time)
+  put16(head, 12, date)
+  put32(head, 14, crc)
+  put32(head, 18, f.data.length)
+  put32(head, 22, f.data.length)
+  put16(head, 26, name.length)
+  head.set(name, 30)
+
+  const cen = new Uint8Array(46 + name.length)
+  put32(cen, 0, SIG_CENTRAL)
+  put16(cen, 4, 20)
+  put16(cen, 6, 20)
+  put16(cen, 8, 0x0800)
+  put16(cen, 10, 0)
+  put16(cen, 12, time)
+  put16(cen, 14, date)
+  put32(cen, 16, crc)
+  put32(cen, 20, f.data.length)
+  put32(cen, 24, f.data.length)
+  put16(cen, 28, name.length)
+  put32(cen, 42, offset)
+  cen.set(name, 46)
+  return { head, cen }
 }
 
 function endRecord(count: number, cdSize: number, cdStart: number): Uint8Array {
@@ -319,53 +400,17 @@ function endRecord(count: number, cdSize: number, cdStart: number): Uint8Array {
  * For handing videos back: they are already compressed, deflating them again
  * gains nothing, and storing lets each file's bytes be a view into the deck.
  */
-export function storedZip(
-  files: Array<{ name: string; data: Uint8Array; crc?: number }>,
-): Uint8Array[] {
-  const enc = new TextEncoder()
+export function storedZip(files: StoredFile[]): Uint8Array[] {
   const out: Uint8Array[] = []
   const central: Uint8Array[] = []
   let offset = 0
-  const now = new Date()
-  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)
-  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()
+  const { time, date } = dosNow()
 
   for (const f of files) {
-    const name = enc.encode(f.name)
-    // A file lifted out of the deck already has its CRC in the deck's own
-    // directory; recomputing it over 2 GB of video is seconds of nothing.
-    const crc = f.crc ?? crc32(f.data)
     if (offset > LIMIT_32 || f.data.length > LIMIT_32) {
       throw new Error('Too much media for one zip (over 4 GB). Save the files one at a time.')
     }
-    const head = new Uint8Array(30 + name.length)
-    put32(head, 0, SIG_LOCAL)
-    put16(head, 4, 20)
-    put16(head, 6, 0x0800)
-    put16(head, 8, 0)
-    put16(head, 10, dosTime)
-    put16(head, 12, dosDate)
-    put32(head, 14, crc)
-    put32(head, 18, f.data.length)
-    put32(head, 22, f.data.length)
-    put16(head, 26, name.length)
-    head.set(name, 30)
-
-    const cen = new Uint8Array(46 + name.length)
-    put32(cen, 0, SIG_CENTRAL)
-    put16(cen, 4, 20)
-    put16(cen, 6, 20)
-    put16(cen, 8, 0x0800)
-    put16(cen, 10, 0)
-    put16(cen, 12, dosTime)
-    put16(cen, 14, dosDate)
-    put32(cen, 16, crc)
-    put32(cen, 20, f.data.length)
-    put32(cen, 24, f.data.length)
-    put16(cen, 28, name.length)
-    put32(cen, 42, offset)
-    cen.set(name, 46)
-
+    const { head, cen } = storedRecords(f, offset, time, date)
     out.push(head, f.data)
     central.push(cen)
     offset += head.length + f.data.length
