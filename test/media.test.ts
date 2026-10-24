@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { unzipSync, strFromU8 } from 'fflate'
+import { unzipSync, zipSync, strFromU8 } from 'fflate'
 import { scanMedia, hideSlides, setShowFalse, classifyUrl, mediaFilenames, mediaBytes } from '../src/core/media'
 import { readZipDirectory, storedZip, crc32 } from '../src/core/zipdir'
 import { mediaManifest } from '../src/core/mediamanifest'
@@ -90,6 +90,24 @@ describe('media scan', () => {
     ])
     // An ordinary web link is not media.
     expect(online.some((p) => p.source === 'online' && p.url.includes('example.com'))).toBe(false)
+  })
+
+  it('takes PowerPoint’s "NULL" link on a trimmed clip for no link at all', () => {
+    // What PowerPoint for Mac 16.112.3 wrote for a trimmed, embedded clip.
+    const zip = unzipSync(deck())
+    const rels = 'ppt/slides/_rels/slide3.xml.rels'
+    zip[rels] = new TextEncoder().encode(
+      strFromU8(zip[rels]!).replace(
+        'Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="../media/media1.mp4"',
+        'Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/video" Target="NULL" TargetMode="External"',
+      ),
+    )
+    expect(strFromU8(zip[rels]!)).toContain('Target="NULL"')
+    const r = scanMedia(zipSync(zip))
+    const first = r.placements.filter((p) => p.slide === 1)
+    expect(first).toHaveLength(1)
+    expect(first[0]).toMatchObject({ source: 'embedded', part: 'ppt/media/media1.mp4', playback: { trimStartMs: 1500 } })
+    expect(r.placements.filter((p) => p.source === 'linked')).toHaveLength(1) // only slide 4's
   })
 
   it('reports a video linked from disk as linked, not embedded', () => {

@@ -271,7 +271,11 @@ export function scanMedia(file: Uint8Array): MediaScanResult {
       let placed = false
       for (const rid of shape.rids) {
         const rel = relById.get(rid)
-        if (!rel || seen.has(rel.target)) continue
+        // PowerPoint for Mac writes the videoFile link of an embedded clip it
+        // has trimmed as an External relationship to "NULL" (16.112.3,
+        // 2026-10-24); the file itself is reached through p14:media. It is
+        // no link at all, not a video on somebody's disk.
+        if (!rel || seen.has(rel.target) || (rel.external && rel.target === 'NULL')) continue
         seen.add(rel.target)
         const kind = shape.kindHint ?? kindFromName(rel.target) ?? 'video'
         const base = { slide: slideNumber, shape: shape.name, kind, playback, ...extra }
