@@ -501,7 +501,7 @@ fn unzip_member(archive: &Path, member: &str, work: &Path) -> Result<PathBuf, St
     let mut zip = zip::ZipArchive::new(f).map_err(|e| format!("Not a zip: {e}"))?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
-        let name = entry.name().replace('\\', "/");
+        let name = entry.name().map_err(|e| e.to_string())?.replace('\\', "/");
         if name == member || name.ends_with(&format!("/{member}")) {
             let out = work.join(Path::new(member).file_name().unwrap_or_default());
             let mut w = File::create(&out).map_err(|e| e.to_string())?;
