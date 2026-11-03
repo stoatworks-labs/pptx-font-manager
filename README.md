@@ -17,6 +17,8 @@ the machine that needs them.
 
 Everything happens in the browser. The deck is never uploaded anywhere.
 
+Use it at [pptx-font-manager.stoatworks-labs.com](https://pptx-font-manager.stoatworks-labs.com). Its [page on Stoatworks Labs](https://stoatworks-labs.com/web-tools/pptx-font-manager/) covers running it on your own server, and the [project page](https://stoatworks-labs.com/software/pptx-font-manager/) has the user guide.
+
 ![The hosted tool with the repo's synthetic test deck loaded: five fonts found and their install state on this machine](docs/screenshots/pptx-font-manager.png)
 
 <sub>The hosted tool with the repo's synthetic test deck (`test/fixtures/synthetic.pptx`) loaded: five fonts found, four installed on the machine that took the picture, one family present but not at the weight the deck asks for, and the bundle ready to build. The deck never left the browser.</sub>

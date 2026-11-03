@@ -1,0 +1,17 @@
+# PowerPoint Font Manager
+
+> The fonts a deck actually uses, and the ones you're missing
+
+Drop in a .pptx and find out which fonts it actually uses, which of those are installed on the machine you're looking at it on, and what to do about the rest. The hard part is that a plain search of the file gets it wrong: every Office theme carries a script-fallback table naming around thirty CJK and Indic fonts whether or not the deck has a single such character in it, so three real presentations report 39, 36 and 9 typefaces when the true answers are 2, 4 and 6. Decks also name faces rather than families (“Helvetica Neue Medium”, “Poppins Regular”, “Times Roman”), which a naive check calls missing when the font's sitting right there. It sorts out both before it tells you anything.
+
+Missing fonts are matched across two catalogues, 1,942 Google Fonts families plus 119 more from Fontsource. The ones that can never be shared (Calibri, Cambria, Arial, Times New Roman) get metric-compatible stand-ins instead, with the same advance widths, so line breaks hold. Adobe Fonts are named as Adobe Fonts and linked to activate, rather than pretending they can be fetched. Anything left goes into a sidecar .zip with per-platform installers, and a desktop build installs them outright.
+
+It runs in the browser at https://pptx-font-manager.stoatworks-labs.com/ and is free to use.
+
+## Links
+
+- [PowerPoint Font Manager on Stoatworks Labs](https://stoatworks-labs.com/web-tools/pptx-font-manager/): what it is, with links to everything else
+- [Project page](https://stoatworks-labs.com/software/pptx-font-manager/)
+- [User guide](https://stoatworks-labs.com/software/pptx-font-manager/guide/)
+- [Source code](https://github.com/stoatworks-labs/pptx-font-manager)
+- [Self-hosting](https://stoatworks-labs.com/web-tools/self-hosting/): running it on your own server

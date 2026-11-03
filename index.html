@@ -3,11 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PowerPoint Font Manager</title>
-    <meta
-      name="description"
-      content="Scan a PowerPoint deck for the fonts it actually uses, check which are installed, and build a sidecar font bundle."
-    />
+    <title>PowerPoint Font Manager — The fonts a deck actually uses, and the ones you're missing</title>
+    <meta name="description" content="Drop in a .pptx and it tells you which fonts the deck actually uses and which are installed, then hands you a .zip that installs the rest. Free, in the browser, nothing uploaded." />
+    <link rel="canonical" href="https://pptx-font-manager.stoatworks-labs.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Stoatworks Labs" />
+    <meta property="og:title" content="PowerPoint Font Manager — The fonts a deck actually uses, and the ones you're missing" />
+    <meta property="og:description" content="Drop in a .pptx and it tells you which fonts the deck actually uses and which are installed, then hands you a .zip that installs the rest. Free, in the browser, nothing uploaded." />
+    <meta property="og:url" content="https://pptx-font-manager.stoatworks-labs.com/" />
+    <meta property="og:image" content="https://stoatworks-labs.com/thumbs/pptx-font-manager.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="720" />
+    <meta property="og:image:alt" content="PowerPoint Font Manager" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "@id": "https://pptx-font-manager.stoatworks-labs.com#app",
+        "name": "PowerPoint Font Manager",
+        "url": "https://pptx-font-manager.stoatworks-labs.com",
+        "description": "Drop in a .pptx and it tells you which fonts the deck actually uses and which are installed, then hands you a .zip that installs the rest. Free, in the browser, nothing uploaded.",
+        "applicationCategory": "DesignApplication",
+        "operatingSystem": "Any (runs in a web browser)",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "GBP"
+        },
+        "author": {
+          "@id": "https://stoatworks-labs.com/#organization",
+          "@type": "Organization",
+          "name": "Stoatworks Labs",
+          "url": "https://stoatworks-labs.com/"
+        },
+        "publisher": {
+          "@id": "https://stoatworks-labs.com/#organization"
+        },
+        "sameAs": [
+          "https://stoatworks-labs.com/web-tools/pptx-font-manager/",
+          "https://github.com/stoatworks-labs/pptx-font-manager"
+        ]
+      }
+    </script>
       <link rel="manifest" href="/manifest.webmanifest" />
     <!-- iOS ignores the manifest's icons and wants a PNG of its own. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -16,6 +55,18 @@
     <meta name="theme-color" content="#16161a" media="(prefers-color-scheme: dark)" />
   </head>
   <body>
+    <noscript>
+      <h1>PowerPoint Font Manager</h1>
+      <p>Drop in a .pptx and find out which fonts it actually uses, which of those are installed on the machine you're looking at it on, and what to do about the rest. The hard part is that a plain search of the file gets it wrong: every Office theme carries a script-fallback table naming around thirty CJK and Indic fonts whether or not the deck has a single such character in it, so three real presentations report 39, 36 and 9 typefaces when the true answers are 2, 4 and 6. Decks also name faces rather than families (“Helvetica Neue Medium”, “Poppins Regular”, “Times Roman”), which a naive check calls missing when the font's sitting right there. It sorts out both before it tells you anything.</p>
+      <p>Missing fonts are matched across two catalogues, 1,942 Google Fonts families plus 119 more from Fontsource. The ones that can never be shared (Calibri, Cambria, Arial, Times New Roman) get metric-compatible stand-ins instead, with the same advance widths, so line breaks hold. Adobe Fonts are named as Adobe Fonts and linked to activate, rather than pretending they can be fetched. Anything left goes into a sidecar .zip with per-platform installers, and a desktop build installs them outright.</p>
+      <p>It needs JavaScript to run.</p>
+      <ul>
+        <li><a href="https://stoatworks-labs.com/web-tools/pptx-font-manager/">PowerPoint Font Manager on Stoatworks Labs</a></li>
+        <li><a href="https://stoatworks-labs.com/software/pptx-font-manager/">Project page</a></li>
+        <li><a href="https://stoatworks-labs.com/software/pptx-font-manager/guide/">User guide</a></li>
+        <li><a href="https://github.com/stoatworks-labs/pptx-font-manager">Source code on GitHub</a></li>
+      </ul>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

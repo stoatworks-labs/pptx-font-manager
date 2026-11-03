@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://pptx-font-manager.stoatworks-labs.com/sitemap.xml

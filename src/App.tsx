@@ -710,6 +710,15 @@ export default function App() {
         {desktop ? 'Desktop · ' : ''}
         Catalogues: {CATALOGUE_COUNT} Google Fonts families ({CATALOGUE_DATE}) + {FONTSOURCE_COUNT}{' '}
         more from Fontsource · {__APP_VERSION__}
+        {/* Hosted build only: in the desktop window a link would just be a way out of the app. */}
+        {desktop ? null : (
+          <>
+            {' · '}
+            <a className="about-link" href="https://stoatworks-labs.com/web-tools/pptx-font-manager/" target="_blank" rel="noopener">
+              About this tool
+            </a>
+          </>
+        )}
       </footer>
     </>
   )
