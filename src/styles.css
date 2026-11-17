@@ -69,15 +69,6 @@ body {
   min-width: 0;
 }
 
-/* Restated: the tool's own unlayered `a` colour would beat the theme's bar button. */
-.top .about {
-  display: inline-block;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  text-decoration: none;
-  color: var(--sw-navy-ink);
-}
-
 .top .sub {
   color: var(--sw-navy-ink-2);
   margin: 12px 0 0;
