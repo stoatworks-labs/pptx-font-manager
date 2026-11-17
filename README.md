@@ -21,7 +21,7 @@ Use it at [pptx-font-manager.stoatworks-labs.com](https://pptx-font-manager.stoa
 
 ![The hosted tool with the repo's synthetic test deck loaded: five fonts found and their install state on this machine](docs/screenshots/pptx-font-manager.png)
 
-<sub>The hosted tool with the repo's synthetic test deck (`test/fixtures/synthetic.pptx`) loaded: five fonts found, four installed on the machine that took the picture, one family present but not at the weight the deck asks for, and the bundle ready to build. The deck never left the browser.</sub>
+<sub>The hosted tool with the repo's synthetic test deck (`test/fixtures/synthetic.pptx`) loaded: five fonts found. The four Google Fonts families on its slides and layouts aren't installed on the machine that took the picture, so each is marked missing with a Download button; the fifth, Courier New, appears only in the notes or an unused layout, is installed, and sits behind Show 1 more. The deck never left the browser.</sub>
 
 ---
 

@@ -3,9 +3,9 @@
 PowerPoint Font Manager tells you which fonts a `.pptx` actually uses and which of those are
 installed here, then builds a sidecar `.zip` that installs the rest on the machine that needs them.
 
-![The hosted tool with the repo's synthetic test deck loaded: five fonts found, four installed on the machine that took the picture, one family present but not…](screenshots/pptx-font-manager.png)
+![The hosted tool with the repo's synthetic test deck loaded: five fonts found, four of them missing on the machine that took the picture, each with a Download button](screenshots/pptx-font-manager.png)
 
-*The hosted tool with the repo's synthetic test deck loaded: five fonts found, four installed on the machine that took the picture, one family present but not at the weight the deck asks for, and the bundle ready to build. The deck never left the browser.*
+*The hosted tool with the repo's synthetic test deck loaded: five fonts found. The four Google Fonts families on its slides and layouts aren't installed on the machine that took the picture, so each is marked missing with a Download button; the fifth, Courier New, appears only in the notes or an unused layout, is installed, and sits behind Show 1 more. The deck never left the browser.*
 
 Everything happens in the browser. The deck is never uploaded anywhere.
 
