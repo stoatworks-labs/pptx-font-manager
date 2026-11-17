@@ -496,14 +496,37 @@ export default function App() {
 
   return (
     <>
-      <h1>PowerPoint Font Manager</h1>
-      <p className="sub">
-        Find the fonts a deck actually uses, check which are installed here, and{' '}
-        {desktop ? 'install the ones that are missing' : 'build a sidecar bundle for the machine that needs them'}.
-        Then check its video: what will play where, what needs the internet, and the files
-        themselves.
-        {!desktop && ' The file never leaves your browser.'}
-      </p>
+      <header className="sw-bar top">
+        <div className="top-inner">
+          <div className="brand-row">
+            <h1 className="sw-brand">
+              <span className="sw-mark" aria-hidden="true">Aa</span> PowerPoint Font Manager
+            </h1>
+            {/* Hosted build only, as in the footer: in the desktop window a link would just be a way out of the app.
+                There is no about.js here yet; marked so the About window takes over once it is synced in. */}
+            {desktop ? null : (
+              <a
+                className="sw-btn about"
+                data-stoatworks-about
+                href="https://stoatworks-labs.com/web-tools/pptx-font-manager/"
+                target="_blank"
+                rel="noopener"
+              >
+                About
+              </a>
+            )}
+          </div>
+          <p className="sub">
+            Find the fonts a deck actually uses, check which are installed here, and{' '}
+            {desktop ? 'install the ones that are missing' : 'build a sidecar bundle for the machine that needs them'}.
+            Then check its video: what will play where, what needs the internet, and the files
+            themselves.
+            {!desktop && ' The file never leaves your browser.'}
+          </p>
+        </div>
+      </header>
+
+      <main className="page">
 
       <div
         className={`drop${over ? ' over' : ''}`}
@@ -720,6 +743,7 @@ export default function App() {
           </>
         )}
       </footer>
+      </main>
     </>
   )
 }

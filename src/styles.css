@@ -1,47 +1,25 @@
+/* Colours come from the shared Stoatworks theme (stoatworks-theme.css, imported first),
+   so the tool follows the system's light or dark setting the way every fleet tool does.
+   The status tints are mixed from the theme's status colours over the card. */
 :root {
-  --bg: #fbfbfa;
-  --panel: #ffffff;
-  --panel-2: #f4f4f2;
-  --ink: #1d1c1a;
-  --ink-2: #5c5a55;
-  --ink-3: #8a8781;
-  --line: #e2e0db;
-  --accent: #a8541c;
-  --accent-ink: #ffffff;
-  --ok: #2f6b3f;
-  --ok-bg: #e9f2ea;
-  --warn: #8a6100;
-  --warn-bg: #fbf1da;
-  --bad: #97331f;
-  --bad-bg: #fbeae6;
-  --info: #2a5878;
-  --info-bg: #e8f0f6;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16161a;
-    --panel: #1e1e24;
-    --panel-2: #26262e;
-    --ink: #eceaea;
-    --ink-2: #b0adae;
-    --ink-3: #7e7b7d;
-    --line: #33333c;
-    --accent: #e08e4f;
-    --accent-ink: #201404;
-    --ok: #8fd0a1;
-    --ok-bg: #1c2c21;
-    --warn: #e5be6d;
-    --warn-bg: #2e2718;
-    --bad: #f0a291;
-    --bad-bg: #32201c;
-    --info: #9cc4e0;
-    --info-bg: #1a262f;
-    color-scheme: dark;
-  }
+  --bg: var(--sw-paper);
+  --panel: var(--sw-card);
+  --panel-2: var(--sw-tint);
+  --ink: var(--sw-ink);
+  --ink-2: var(--sw-muted);
+  --ink-3: var(--sw-faint);
+  --line: var(--sw-line);
+  --accent: var(--sw-accent);
+  --accent-ink: var(--sw-on-accent);
+  --ok: var(--sw-ok);
+  --ok-bg: color-mix(in srgb, var(--sw-ok) 11%, var(--sw-card));
+  --warn: var(--sw-warn);
+  --warn-bg: color-mix(in srgb, var(--sw-warn) 12%, var(--sw-card));
+  --bad: var(--sw-bad);
+  --bad-bg: color-mix(in srgb, var(--sw-bad) 10%, var(--sw-card));
+  --info: var(--sw-accent);
+  --info-bg: var(--sw-tint);
+  --radius: var(--sw-radius);
 }
 
 * {
@@ -57,21 +35,52 @@ body {
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font: 15px/1.55 var(--sw-font);
   -webkit-font-smoothing: antialiased;
 }
 
-#root {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 28px 20px 80px;
+/* ---------- the navy band: brand row and the lede, the full width of the window ---------- */
+
+.top {
+  display: block;
+  padding: 22px 0 26px;
 }
 
-h1 {
-  font-size: 25px;
-  font-weight: 640;
-  letter-spacing: -0.015em;
-  margin: 0 0 4px;
+.top-inner,
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.page {
+  padding: 24px 20px 80px;
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.top .sw-brand {
+  white-space: normal;
+  min-width: 0;
+}
+
+/* Restated: the tool's own unlayered `a` colour would beat the theme's bar button. */
+.top .about {
+  display: inline-block;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  text-decoration: none;
+  color: var(--sw-navy-ink);
+}
+
+.top .sub {
+  color: var(--sw-navy-ink-2);
+  margin: 12px 0 0;
 }
 
 h2 {
@@ -181,37 +190,38 @@ a {
   flex: 1;
 }
 
-button {
+/* Scoped to the page: an unlayered bare `button` rule would beat the theme's navy-bar buttons. */
+.page button {
   font: inherit;
   font-size: 13.5px;
   font-weight: 520;
   padding: 7px 13px;
-  border-radius: 8px;
+  border-radius: var(--sw-radius-sm);
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: border-color 0.12s;
 }
 
-button:hover:not(:disabled) {
-  background: var(--panel-2);
-  border-color: var(--ink-3);
+.page button:hover:not(:disabled) {
+  border-color: var(--accent);
 }
 
-button.primary {
+.page button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
+  font-weight: 600;
 }
 
-button.primary:hover:not(:disabled) {
+.page button.primary:hover:not(:disabled) {
   filter: brightness(1.08);
   background: var(--accent);
   border-color: var(--accent);
 }
 
-button:disabled {
+.page button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -251,7 +261,7 @@ button:disabled {
 }
 
 .row .meta code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--sw-mono);
   font-size: 12px;
   background: var(--panel-2);
   padding: 1px 5px;
@@ -501,7 +511,7 @@ section.media > p.quiet {
 }
 
 .note ul.online .url {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--sw-mono);
   font-size: 12px;
   overflow-wrap: anywhere;
   margin-top: 2px;
