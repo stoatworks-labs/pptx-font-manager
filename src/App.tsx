@@ -502,18 +502,12 @@ export default function App() {
             <h1 className="sw-brand">
               <span className="sw-mark" aria-hidden="true">Aa</span> PowerPoint Font Manager
             </h1>
-            {/* Hosted build only, as in the footer: in the desktop window a link would just be a way out of the app.
-                There is no about.js here yet; marked so the About window takes over once it is synced in. */}
+            {/* Hosted build only, as with the footer's About link: the desktop window leaves it out.
+                Opens the shared About dialog — see public/about.js, which delegates this attribute from the document. */}
             {desktop ? null : (
-              <a
-                className="sw-btn about"
-                data-stoatworks-about
-                href="https://stoatworks-labs.com/web-tools/pptx-font-manager/"
-                target="_blank"
-                rel="noopener"
-              >
+              <button type="button" data-stoatworks-about>
                 About
-              </a>
+              </button>
             )}
           </div>
           <p className="sub">
