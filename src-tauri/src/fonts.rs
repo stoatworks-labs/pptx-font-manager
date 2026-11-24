@@ -143,8 +143,10 @@ fn family_file_paths(_family: &str) -> Vec<PathBuf> {
 
 /// The directories Creative Cloud syncs desktop faces into.
 ///
-///     macOS    ~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r
-///     Windows  %APPDATA%\Adobe\CoreSync\plugins\livetype\r
+/// ```text
+/// macOS    ~/Library/Application Support/Adobe/CoreSync/plugins/livetype/.r
+/// Windows  %APPDATA%\Adobe\CoreSync\plugins\livetype\r
+/// ```
 ///
 /// Both leaf spellings are tried on both platforms. The dot is the documented
 /// difference between them, and it is not worth a wrong answer if Adobe ever
