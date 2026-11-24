@@ -18,13 +18,13 @@
     "desktop:build": "tauri build"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/api": "^2.12.5",
     "fflate": "^0.8.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.4",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
